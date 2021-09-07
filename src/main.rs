@@ -1,30 +1,28 @@
 extern crate byteorder;
-extern crate serde_json;
 extern crate clap;
+extern crate serde_json;
 
-use clap::{Arg, App, SubCommand};
+use clap::{App, Arg, SubCommand};
 use std::env;
-use std::path::Path;
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
-use std::mem;
 use std::io::Cursor;
+use std::io::{Read, Write};
+use std::mem;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 
-use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 const RUN_COMMAND: u32 = 0;
 const GET_WORKSPACES: u32 = 1;
 // const SUBSCRIBE: u32 = 2;
 const GET_OUTPUTS: u32 = 3;
 
-
-
 fn get_stream() -> UnixStream {
     let socket_path = match env::var("I3SOCK") {
         Ok(val) => val,
         Err(_e) => {
             panic!("couldn't find i3/sway socket");
-        },
+        }
     };
 
     let socket = Path::new(&socket_path);
@@ -35,17 +33,19 @@ fn get_stream() -> UnixStream {
     }
 }
 
-
 fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
     let payload_length = payload.len() as u32;
 
-    let mut msg_prefix: [u8; 6 * mem::size_of::<u8>() + 2 * mem::size_of::<u32>()] = *b"i3-ipc00000000";
+    let mut msg_prefix: [u8; 6 * mem::size_of::<u8>() + 2 * mem::size_of::<u32>()] =
+        *b"i3-ipc00000000";
 
-    msg_prefix[6..].as_mut()
+    msg_prefix[6..]
+        .as_mut()
         .write_u32::<LittleEndian>(payload_length)
         .expect("Unable to write");
 
-    msg_prefix[10..].as_mut()
+    msg_prefix[10..]
+        .as_mut()
         .write_u32::<LittleEndian>(msg_type)
         .expect("Unable to write");
 
@@ -64,13 +64,17 @@ fn send_command(stream: &UnixStream, command: &str) {
     check_success(&stream);
 }
 
-
 fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
     let mut response_header: [u8; 14] = *b"uninitialized.";
     stream.read_exact(&mut response_header).unwrap();
 
     if &response_header[0..6] == b"i3-ipc" {
-        let mut v = Cursor::new(vec!(response_header[6], response_header[7], response_header[8], response_header[9]));
+        let mut v = Cursor::new(vec![
+            response_header[6],
+            response_header[7],
+            response_header[8],
+            response_header[9],
+        ]);
         let payload_length = v.read_u32::<LittleEndian>().unwrap();
 
         let mut payload = vec![0; payload_length as usize];
@@ -79,7 +83,7 @@ fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
         Ok(payload_str)
     } else {
         eprint!("Not an i3-icp packet, emptying the buffer: ");
-        let mut v = vec!();
+        let mut v = vec![];
         stream.read_to_end(&mut v).unwrap();
         eprintln!("{:?}", v);
         Err("Unable to read i3-ipc packet")
@@ -94,7 +98,7 @@ fn check_success(stream: &UnixStream) {
                 serde_json::Value::Bool(true) => eprintln!("Command successful"),
                 _ => panic!("Command failed: {:#?}", r),
             }
-        },
+        }
         Err(_) => panic!("Unable to read response"),
     };
 }
@@ -120,7 +124,10 @@ fn get_workspaces(stream: &UnixStream) -> Vec<serde_json::Value> {
 fn get_current_output_index(stream: &UnixStream) -> String {
     let outputs = get_outputs(&stream);
 
-    let focused_output_index = match outputs.iter().position(|x| x["focused"] == serde_json::Value::Bool(true)) {
+    let focused_output_index = match outputs
+        .iter()
+        .position(|x| x["focused"] == serde_json::Value::Bool(true))
+    {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
     };
@@ -131,7 +138,10 @@ fn get_current_output_index(stream: &UnixStream) -> String {
 fn get_current_output_name(stream: &UnixStream) -> String {
     let outputs = get_outputs(&stream);
 
-    let focused_output_index = match outputs.iter().find(|x| x["focused"] == serde_json::Value::Bool(true)) {
+    let focused_output_index = match outputs
+        .iter()
+        .find(|x| x["focused"] == serde_json::Value::Bool(true))
+    {
         Some(i) => i["name"].as_str().unwrap(),
         None => panic!("WTF! No focused output???"),
     };
@@ -184,7 +194,10 @@ fn move_container_to_prev_output(stream: &UnixStream) {
 
 fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) {
     let outputs = get_outputs(&stream);
-    let focused_output_index = match outputs.iter().position(|x| x["focused"] == serde_json::Value::Bool(true)) {
+    let focused_output_index = match outputs
+        .iter()
+        .position(|x| x["focused"] == serde_json::Value::Bool(true))
+    {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
     };
@@ -197,9 +210,13 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     }
 
     let workspaces = get_workspaces(&stream);
-    let target_workspace = workspaces.iter()
-                            .filter(|x| x["output"] == target_output["name"] && x["visible"] == serde_json::Value::Bool(true))
-                            .next().unwrap();
+    let target_workspace = workspaces
+        .iter()
+        .filter(|x| {
+            x["output"] == target_output["name"] && x["visible"] == serde_json::Value::Bool(true)
+        })
+        .next()
+        .unwrap();
 
     // Move container to target workspace
     let mut cmd: String = "move container to workspace ".to_string();
@@ -224,41 +241,60 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
     }
 }
 
-
 fn main() {
     let matches = App::new("swaysome")
-                          .version("1.0")
-                          .author("Skia <skia@hya.sk>")
-                          .about("Better multimonitor handling for sway")
-                          .subcommand(SubCommand::with_name("init")
-                                      .about("Initialize the workspaces for all the outputs")
-                                      .arg(Arg::with_name("index")
-                                           .help("The index to initialize with")
-                                           .required(true)
-                                           .takes_value(true)))
-                          .subcommand(SubCommand::with_name("focus")
-                                      .about("Focus to another workspace on the same output")
-                                      .arg(Arg::with_name("index")
-                                           .help("The index to focus on")
-                                           .required(true)
-                                           .takes_value(true)))
-                          .subcommand(SubCommand::with_name("focus_all_outputs")
-                                      .about("Focus to another workspace on all the outputs")
-                                      .arg(Arg::with_name("index")
-                                           .help("The index to focus on")
-                                           .required(true)
-                                           .takes_value(true)))
-                          .subcommand(SubCommand::with_name("move")
-                                      .about("Move the focused container to another workspace on the same output")
-                                      .arg(Arg::with_name("index")
-                                           .help("The index to move the container to")
-                                           .required(true)
-                                           .takes_value(true)))
-                          .subcommand(SubCommand::with_name("next_output")
-                                      .about("Move the focused container to the next output"))
-                          .subcommand(SubCommand::with_name("prev_output")
-                                      .about("Move the focused container to the previous output"))
-                          .get_matches();
+        .version("1.0")
+        .author("Skia <skia@hya.sk>")
+        .about("Better multimonitor handling for sway")
+        .subcommand(
+            SubCommand::with_name("init")
+                .about("Initialize the workspaces for all the outputs")
+                .arg(
+                    Arg::with_name("index")
+                        .help("The index to initialize with")
+                        .required(true)
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("focus")
+                .about("Focus to another workspace on the same output")
+                .arg(
+                    Arg::with_name("index")
+                        .help("The index to focus on")
+                        .required(true)
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("focus_all_outputs")
+                .about("Focus to another workspace on all the outputs")
+                .arg(
+                    Arg::with_name("index")
+                        .help("The index to focus on")
+                        .required(true)
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("move")
+                .about("Move the focused container to another workspace on the same output")
+                .arg(
+                    Arg::with_name("index")
+                        .help("The index to move the container to")
+                        .required(true)
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("next_output")
+                .about("Move the focused container to the next output"),
+        )
+        .subcommand(
+            SubCommand::with_name("prev_output")
+                .about("Move the focused container to the previous output"),
+        )
+        .get_matches();
 
     let stream = get_stream();
 
