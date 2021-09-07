@@ -1,7 +1,8 @@
-// client.rs
 extern crate byteorder;
 extern crate serde_json;
+extern crate clap;
 
+use clap::{Arg, App, SubCommand};
 use std::env;
 use std::path::Path;
 use std::io::{Read, Write};
@@ -238,20 +239,55 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
     }
 }
 
+
 fn main() {
-    // `args` returns the arguments passed to the program
-    let args: Vec<String> = env::args().map(|x| x.to_string())
-                                       .collect();
+    let matches = App::new("swaysome")
+                          .version("1.0")
+                          .author("Skia <skia@hya.sk>")
+                          .about("Better multimonitor handling for sway")
+                          .subcommand(SubCommand::with_name("init")
+                                      .about("Initialize the workspaces for all the outputs")
+                                      .arg(Arg::with_name("index")
+                                           .help("The index to initialize with")
+                                           .required(true)
+                                           .takes_value(true)))
+                          .subcommand(SubCommand::with_name("focus")
+                                      .about("Focus to another workspace on the same output")
+                                      .arg(Arg::with_name("index")
+                                           .help("The index to focus on")
+                                           .required(true)
+                                           .takes_value(true)))
+                          .subcommand(SubCommand::with_name("focus_all_outputs")
+                                      .about("Focus to another workspace on all the outputs")
+                                      .arg(Arg::with_name("index")
+                                           .help("The index to focus on")
+                                           .required(true)
+                                           .takes_value(true)))
+                          .subcommand(SubCommand::with_name("move")
+                                      .about("Move the focused container to another workspace on the same output")
+                                      .arg(Arg::with_name("index")
+                                           .help("The index to move the container to")
+                                           .required(true)
+                                           .takes_value(true)))
+                          .subcommand(SubCommand::with_name("next_output")
+                                      .about("Move the focused container to the next output"))
+                          .subcommand(SubCommand::with_name("prev_output")
+                                      .about("Move the focused container to the previous output"))
+                          .get_matches();
 
     let stream = get_stream();
 
-    match args[1].as_str() {
-        "init" => init_workspaces(&stream, &args[2]),
-        "move" => move_container_to_workspace(&stream, &args[2]),
-        "focus" => focus_to_workspace(&stream, &args[2]),
-        "focus_all_outputs" => focus_all_outputs_to_workspace(&stream, &args[2]),
-        "next_output" => move_container_to_next_output(&stream),
-        "prev_output" => move_container_to_prev_output(&stream),
-        _ => {},
+    if let Some(matches) = matches.subcommand_matches("init") {
+        init_workspaces(&stream, &matches.value_of("index").unwrap().to_string());
+    } else if let Some(matches) = matches.subcommand_matches("move") {
+        move_container_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
+    } else if let Some(matches) = matches.subcommand_matches("focus") {
+        focus_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
+    } else if let Some(matches) = matches.subcommand_matches("focus_all_outputs") {
+        focus_all_outputs_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
+    } else if let Some(_) = matches.subcommand_matches("next_output") {
+        move_container_to_next_output(&stream);
+    } else if let Some(_) = matches.subcommand_matches("prev_output") {
+        move_container_to_prev_output(&stream);
     }
 }
