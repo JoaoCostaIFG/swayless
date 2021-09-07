@@ -6,7 +6,6 @@ use clap::{Arg, App, SubCommand};
 use std::env;
 use std::path::Path;
 use std::io::{Read, Write};
-use std::process::exit;
 use std::os::unix::net::UnixStream;
 use std::mem;
 use std::io::Cursor;
@@ -15,7 +14,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 
 const RUN_COMMAND: u32 = 0;
 const GET_WORKSPACES: u32 = 1;
-const SUBSCRIBE: u32 = 2;
+// const SUBSCRIBE: u32 = 2;
 const GET_OUTPUTS: u32 = 3;
 
 
@@ -24,14 +23,12 @@ fn get_stream() -> UnixStream {
     let socket_path = match env::var("I3SOCK") {
         Ok(val) => val,
         Err(_e) => {
-            eprintln!("couldn't find i3/sway socket");
-            exit(1);
+            panic!("couldn't find i3/sway socket");
         },
     };
 
     let socket = Path::new(&socket_path);
 
-    // Connect to socket
     match UnixStream::connect(&socket) {
         Err(_) => panic!("couldn't connect to i3/sway socket"),
         Ok(stream) => stream,
@@ -61,8 +58,8 @@ fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
     }
 }
 
-fn send_command(mut stream: &UnixStream, command: &str) {
-    println!("Sending command: '{}'", &command);
+fn send_command(stream: &UnixStream, command: &str) {
+    eprint!("Sending command: '{}' - ", &command);
     send_msg(&stream, RUN_COMMAND, &command);
     check_success(&stream);
 }
@@ -73,17 +70,12 @@ fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
     stream.read_exact(&mut response_header).unwrap();
 
     if &response_header[0..6] == b"i3-ipc" {
-        // let l: [u8; 14] = response_header[6..10];
         let mut v = Cursor::new(vec!(response_header[6], response_header[7], response_header[8], response_header[9]));
-        // let mut v = Cursor::new(vec!(response_header[6..10]));
         let payload_length = v.read_u32::<LittleEndian>().unwrap();
-        // payload_length = response_header[6..10].read_u32::<LittleEndian>().unwrap();
-        eprintln!("This is a valid i3 packet of length: {}", payload_length);
 
         let mut payload = vec![0; payload_length as usize];
         stream.read_exact(&mut payload[..]).unwrap();
         let payload_str = String::from_utf8(payload).unwrap();
-        eprintln!("Payload: {}", payload_str);
         Ok(payload_str)
     } else {
         eprint!("Not an i3-icp packet, emptying the buffer: ");
@@ -165,7 +157,6 @@ fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
 
 fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) {
     let current_output = get_current_output_name(stream);
-    eprintln!("Current output name: {}", current_output);
 
     // Iterate on all outputs to focus on the given workspace
     let outputs = get_outputs(&stream);
