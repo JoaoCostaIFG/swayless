@@ -61,6 +61,12 @@ fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
     }
 }
 
+fn send_command(mut stream: &UnixStream, command: &str) {
+    println!("Sending command: '{}'", &command);
+    send_msg(&stream, RUN_COMMAND, &command);
+    check_success(&stream);
+}
+
 
 fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
     let mut response_header: [u8; 14] = *b"uninitialized.";
@@ -146,9 +152,7 @@ fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
     let output = get_current_output_index(stream);
     cmd.push_str(&output);
     cmd.push_str(&workspace_name);
-    println!("Sending command: '{}'", &cmd);
-    send_msg(&stream, RUN_COMMAND, &cmd);
-    check_success(&stream);
+    send_command(&stream, &cmd);
 }
 
 fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
@@ -156,9 +160,7 @@ fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
     let output = get_current_output_index(stream);
     cmd.push_str(&output);
     cmd.push_str(&workspace_name);
-    println!("Sending command: '{}'", &cmd);
-    send_msg(&stream, RUN_COMMAND, &cmd);
-    check_success(&stream);
+    send_command(&stream, &cmd);
 }
 
 fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) {
@@ -170,9 +172,7 @@ fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) 
     for output in outputs.iter() {
         let mut cmd: String = "focus output ".to_string();
         cmd.push_str(&output["name"].as_str().unwrap());
-        println!("Sending command: '{}'", &cmd);
-        send_msg(&stream, RUN_COMMAND, &cmd);
-        check_success(&stream);
+        send_command(&stream, &cmd);
 
         focus_to_workspace(&stream, &workspace_name);
     }
@@ -180,9 +180,7 @@ fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) 
     // Get back to currently focused output
     let mut cmd: String = "focus output ".to_string();
     cmd.push_str(&current_output);
-    println!("Sending command: '{}'", &cmd);
-    send_msg(&stream, RUN_COMMAND, &cmd);
-    check_success(&stream);
+    send_command(&stream, &cmd);
 }
 
 fn move_container_to_next_output(stream: &UnixStream) {
@@ -215,14 +213,12 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     // Move container to target workspace
     let mut cmd: String = "move container to workspace ".to_string();
     cmd.push_str(&target_workspace["name"].as_str().unwrap());
-    send_msg(&stream, RUN_COMMAND, &cmd);
-    check_success(&stream);
+    send_command(&stream, &cmd);
 
     // Focus that workspace to follow the container
     let mut cmd: String = "workspace ".to_string();
     cmd.push_str(&target_workspace["name"].as_str().unwrap());
-    send_msg(&stream, RUN_COMMAND, &cmd);
-    check_success(&stream);
+    send_command(&stream, &cmd);
 }
 
 fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
@@ -232,9 +228,7 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
     for output in outputs.iter().rev() {
         let mut cmd = cmd_prefix.clone();
         cmd.push_str(&output["name"].as_str().unwrap());
-        println!("Sending command: '{}'", &cmd);
-        send_msg(&stream, RUN_COMMAND, &cmd);
-        check_success(&stream);
+        send_command(&stream, &cmd);
         focus_to_workspace(&stream, &workspace_name);
     }
 }
