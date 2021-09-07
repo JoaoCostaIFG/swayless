@@ -150,18 +150,20 @@ fn get_current_output_name(stream: &UnixStream) -> String {
 }
 
 fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
-    let mut cmd: String = "move container to workspace ".to_string();
-    let output = get_current_output_index(stream);
-    cmd.push_str(&output);
-    cmd.push_str(&workspace_name);
+    let mut cmd: String = "move container to workspace number ".to_string();
+    let full_ws_name = format!("{}{}", get_current_output_index(stream), &workspace_name)
+        .parse::<i32>()
+        .unwrap();
+    cmd.push_str(&full_ws_name.to_string());
     send_command(&stream, &cmd);
 }
 
 fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
-    let mut cmd: String = "workspace ".to_string();
-    let output = get_current_output_index(stream);
-    cmd.push_str(&output);
-    cmd.push_str(&workspace_name);
+    let mut cmd: String = "workspace number ".to_string();
+    let full_ws_name = format!("{}{}", get_current_output_index(stream), &workspace_name)
+        .parse::<i32>()
+        .unwrap();
+    cmd.push_str(&full_ws_name.to_string());
     send_command(&stream, &cmd);
 }
 
@@ -219,13 +221,13 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
         .unwrap();
 
     // Move container to target workspace
-    let mut cmd: String = "move container to workspace ".to_string();
-    cmd.push_str(&target_workspace["name"].as_str().unwrap());
+    let mut cmd: String = "move container to workspace number ".to_string();
+    cmd.push_str(&target_workspace["num"].to_string());
     send_command(&stream, &cmd);
 
     // Focus that workspace to follow the container
-    let mut cmd: String = "workspace ".to_string();
-    cmd.push_str(&target_workspace["name"].as_str().unwrap());
+    let mut cmd: String = "workspace number ".to_string();
+    cmd.push_str(&target_workspace["num"].to_string());
     send_command(&stream, &cmd);
 }
 
