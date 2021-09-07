@@ -24,7 +24,7 @@ fn get_stream() -> UnixStream {
     let socket_path = match env::var("I3SOCK") {
         Ok(val) => val,
         Err(_e) => {
-            println!("couldn't find i3/sway socket");
+            eprintln!("couldn't find i3/sway socket");
             exit(1);
         },
     };
@@ -72,18 +72,18 @@ fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
         // let mut v = Cursor::new(vec!(response_header[6..10]));
         let payload_length = v.read_u32::<LittleEndian>().unwrap();
         // payload_length = response_header[6..10].read_u32::<LittleEndian>().unwrap();
-        println!("This is a valid i3 packet of length: {}", payload_length);
+        eprintln!("This is a valid i3 packet of length: {}", payload_length);
 
         let mut payload = vec![0; payload_length as usize];
         stream.read_exact(&mut payload[..]).unwrap();
         let payload_str = String::from_utf8(payload).unwrap();
-        println!("Payload: {}", payload_str);
+        eprintln!("Payload: {}", payload_str);
         Ok(payload_str)
     } else {
-        print!("Not an i3-icp packet, emptying the buffer: ");
+        eprint!("Not an i3-icp packet, emptying the buffer: ");
         let mut v = vec!();
         stream.read_to_end(&mut v).unwrap();
-        println!("{:?}", v);
+        eprintln!("{:?}", v);
         Err("Unable to read i3-ipc packet")
     }
 }
@@ -93,7 +93,7 @@ fn check_success(stream: &UnixStream) {
         Ok(msg) => {
             let r: Vec<serde_json::Value> = serde_json::from_str(&msg).unwrap();
             match r[0]["success"] {
-                serde_json::Value::Bool(true) => println!("Command successful"),
+                serde_json::Value::Bool(true) => eprintln!("Command successful"),
                 _ => panic!("Command failed: {:#?}", r),
             }
         },
@@ -163,7 +163,7 @@ fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
 
 fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) {
     let current_output = get_current_output_name(stream);
-    println!("Current output name: {}", current_output);
+    eprintln!("Current output name: {}", current_output);
 
     // Iterate on all outputs to focus on the given workspace
     let outputs = get_outputs(&stream);
