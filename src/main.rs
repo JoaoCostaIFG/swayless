@@ -235,7 +235,7 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
     let outputs = get_outputs(&stream);
 
     let cmd_prefix: String = "focus output ".to_string();
-    for output in outputs.iter().rev() {
+    for output in outputs.iter().filter(|x| x["active"] == true).rev() {
         let mut cmd = cmd_prefix.clone();
         cmd.push_str(&output["name"].as_str().unwrap());
         send_command(&stream, &cmd);
