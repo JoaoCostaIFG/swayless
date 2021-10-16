@@ -1,0 +1,17 @@
+image: "rust:latest"
+
+lint:cargo:
+  stage: build
+  script:
+    - rustc --version && cargo --version
+    - rustup component add rustfmt
+    - cargo fmt
+
+build:cargo:
+  stage: build
+  script:
+    - rustc --version && cargo --version
+    - cargo build --release
+  artifacts:
+    paths:
+        - target/release/swaysome
