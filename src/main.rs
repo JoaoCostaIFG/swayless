@@ -245,7 +245,7 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
 
 fn main() {
     let matches = App::new("swaysome")
-        .version("1.1.1")
+        .version("1.1.2")
         .author("Skia <skia@hya.sk>")
         .about("Better multimonitor handling for sway")
         .subcommand(
