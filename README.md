@@ -3,18 +3,19 @@
 This binary helps you configure sway to work a bit more like Awesome. This
 currently means workspaces that are name-spaced on a per-screen basis.
 
-It should also work with i3, but this is untested.
+It may also work with i3, but this is untested.
+
+*swaysome* is compatible with [sworkstyle](https://lib.rs/crates/sworkstyle).
 
 
 ## Usage
 
-Build and install the `swaysome` binary somewhere in your `$PATH` with something
-like:
-```
-git clone https://git.hya.sk/skia/swaysome
-cd swaysome
-cargo install --path .
-```
+If you have Rust installed, then you can just `cargo install swaysome` and you're good to go.
+
+Otherwise, you may grab a [pre-built
+binary](https://gitlab.com/hyask/swaysome/-/jobs/artifacts/master/raw/target/release/swaysome?job=build:cargo) from the
+CI and put it in your `$PATH`.
+
 
 Then create the file (and the directory if needed) "~/.config/sway/config.d/swaysome.conf" and paste this inside:
 ```
