@@ -118,7 +118,9 @@ fn get_outputs(stream: &UnixStream) -> Vec<Output> {
         Ok(msg) => msg,
         Err(_) => panic!("Unable to get outputs"),
     };
-    serde_json::from_str(&o).unwrap()
+    let mut outputs: Vec<Output> = serde_json::from_str(&o).unwrap();
+    outputs.sort_by(|x, y| x.name.cmp(&y.name));  // sort_by_key doesn't work here (https://stackoverflow.com/a/47126516)
+    outputs
 }
 
 #[derive(Serialize, Deserialize)]
@@ -134,7 +136,9 @@ fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
         Ok(msg) => msg,
         Err(_) => panic!("Unable to get current workspace"),
     };
-    serde_json::from_str(&ws).unwrap()
+    let mut workspaces: Vec<Workspace> = serde_json::from_str(&ws).unwrap();
+    workspaces.sort_by_key(|x| x.num);
+    workspaces
 }
 
 fn get_current_output_index(stream: &UnixStream) -> String {
