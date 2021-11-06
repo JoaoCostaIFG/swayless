@@ -2,6 +2,8 @@ extern crate byteorder;
 extern crate clap;
 extern crate serde_json;
 
+use serde::{Deserialize, Serialize};
+
 use clap::{App, Arg, SubCommand};
 use std::env;
 use std::io::Cursor;
@@ -103,7 +105,14 @@ fn check_success(stream: &UnixStream) {
     };
 }
 
-fn get_outputs(stream: &UnixStream) -> Vec<serde_json::Value> {
+#[derive(Serialize, Deserialize)]
+struct Output {
+    name: String,
+    focused: bool,
+    active: bool,
+}
+
+fn get_outputs(stream: &UnixStream) -> Vec<Output> {
     send_msg(&stream, GET_OUTPUTS, "");
     let o = match read_msg(&stream) {
         Ok(msg) => msg,
@@ -112,7 +121,14 @@ fn get_outputs(stream: &UnixStream) -> Vec<serde_json::Value> {
     serde_json::from_str(&o).unwrap()
 }
 
-fn get_workspaces(stream: &UnixStream) -> Vec<serde_json::Value> {
+#[derive(Serialize, Deserialize)]
+struct Workspace {
+    num: u32,
+    output: String,
+    visible: bool,
+}
+
+fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
     send_msg(&stream, GET_WORKSPACES, "");
     let ws = match read_msg(&stream) {
         Ok(msg) => msg,
@@ -126,7 +142,7 @@ fn get_current_output_index(stream: &UnixStream) -> String {
 
     let focused_output_index = match outputs
         .iter()
-        .position(|x| x["focused"] == serde_json::Value::Bool(true))
+        .position(|x| x.focused)
     {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
@@ -140,9 +156,9 @@ fn get_current_output_name(stream: &UnixStream) -> String {
 
     let focused_output_index = match outputs
         .iter()
-        .find(|x| x["focused"] == serde_json::Value::Bool(true))
+        .find(|x| x.focused)
     {
-        Some(i) => i["name"].as_str().unwrap(),
+        Some(i) => i.name.as_str(),
         None => panic!("WTF! No focused output???"),
     };
 
@@ -174,7 +190,7 @@ fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) 
     let outputs = get_outputs(&stream);
     for output in outputs.iter() {
         let mut cmd: String = "focus output ".to_string();
-        cmd.push_str(&output["name"].as_str().unwrap());
+        cmd.push_str(&output.name.as_str());
         send_command(&stream, &cmd);
 
         focus_to_workspace(&stream, &workspace_name);
@@ -198,7 +214,7 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     let outputs = get_outputs(&stream);
     let focused_output_index = match outputs
         .iter()
-        .position(|x| x["focused"] == serde_json::Value::Bool(true))
+        .position(|x| x.focused)
     {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
@@ -215,19 +231,19 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     let target_workspace = workspaces
         .iter()
         .filter(|x| {
-            x["output"] == target_output["name"] && x["visible"] == serde_json::Value::Bool(true)
+            x.output == target_output.name && x.visible
         })
         .next()
         .unwrap();
 
     // Move container to target workspace
     let mut cmd: String = "move container to workspace number ".to_string();
-    cmd.push_str(&target_workspace["num"].to_string());
+    cmd.push_str(&target_workspace.num.to_string());
     send_command(&stream, &cmd);
 
     // Focus that workspace to follow the container
     let mut cmd: String = "workspace number ".to_string();
-    cmd.push_str(&target_workspace["num"].to_string());
+    cmd.push_str(&target_workspace.num.to_string());
     send_command(&stream, &cmd);
 }
 
@@ -235,9 +251,9 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
     let outputs = get_outputs(&stream);
 
     let cmd_prefix: String = "focus output ".to_string();
-    for output in outputs.iter().filter(|x| x["active"] == true).rev() {
+    for output in outputs.iter().filter(|x| x.active).rev() {
         let mut cmd = cmd_prefix.clone();
-        cmd.push_str(&output["name"].as_str().unwrap());
+        cmd.push_str(&output.name.as_str());
         send_command(&stream, &cmd);
         focus_to_workspace(&stream, &workspace_name);
     }

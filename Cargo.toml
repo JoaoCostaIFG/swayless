@@ -12,5 +12,6 @@ homepage = "https://gitlab.com/hyask/swaysome"
 
 [dependencies]
 byteorder = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = "2"
