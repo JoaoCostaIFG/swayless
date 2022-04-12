@@ -54,16 +54,13 @@ fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
     let mut msg: Vec<u8> = msg_prefix[..].to_vec();
     msg.extend(payload.as_bytes());
 
-    match stream.write_all(&msg[..]) {
-        Err(_) => panic!("couldn't send message"),
-        Ok(_) => {}
-    }
+    if stream.write_all(&msg[..]).is_err() { panic!("couldn't send message"); }
 }
 
 fn send_command(stream: &UnixStream, command: &str) {
     eprint!("Sending command: '{}' - ", &command);
-    send_msg(&stream, RUN_COMMAND, &command);
-    check_success(&stream);
+    send_msg(stream, RUN_COMMAND, command);
+    check_success(stream);
 }
 
 fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
@@ -93,7 +90,7 @@ fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
 }
 
 fn check_success(stream: &UnixStream) {
-    match read_msg(&stream) {
+    match read_msg(stream) {
         Ok(msg) => {
             let r: Vec<serde_json::Value> = serde_json::from_str(&msg).unwrap();
             match r[0]["success"] {
@@ -113,8 +110,8 @@ struct Output {
 }
 
 fn get_outputs(stream: &UnixStream) -> Vec<Output> {
-    send_msg(&stream, GET_OUTPUTS, "");
-    let o = match read_msg(&stream) {
+    send_msg(stream, GET_OUTPUTS, "");
+    let o = match read_msg(stream) {
         Ok(msg) => msg,
         Err(_) => panic!("Unable to get outputs"),
     };
@@ -131,8 +128,8 @@ struct Workspace {
 }
 
 fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
-    send_msg(&stream, GET_WORKSPACES, "");
-    let ws = match read_msg(&stream) {
+    send_msg(stream, GET_WORKSPACES, "");
+    let ws = match read_msg(stream) {
         Ok(msg) => msg,
         Err(_) => panic!("Unable to get current workspace"),
     };
@@ -142,7 +139,7 @@ fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
 }
 
 fn get_current_output_index(stream: &UnixStream) -> String {
-    let outputs = get_outputs(&stream);
+    let outputs = get_outputs(stream);
 
     let focused_output_index = match outputs
         .iter()
@@ -156,7 +153,7 @@ fn get_current_output_index(stream: &UnixStream) -> String {
 }
 
 fn get_current_output_name(stream: &UnixStream) -> String {
-    let outputs = get_outputs(&stream);
+    let outputs = get_outputs(stream);
 
     let focused_output_index = match outputs
         .iter()
@@ -166,7 +163,7 @@ fn get_current_output_name(stream: &UnixStream) -> String {
         None => panic!("WTF! No focused output???"),
     };
 
-    format!("{}", focused_output_index)
+    focused_output_index.to_string()
 }
 
 fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
@@ -175,7 +172,7 @@ fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
         .parse::<i32>()
         .unwrap();
     cmd.push_str(&full_ws_name.to_string());
-    send_command(&stream, &cmd);
+    send_command(stream, &cmd);
 }
 
 fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
@@ -184,38 +181,38 @@ fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
         .parse::<i32>()
         .unwrap();
     cmd.push_str(&full_ws_name.to_string());
-    send_command(&stream, &cmd);
+    send_command(stream, &cmd);
 }
 
 fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) {
     let current_output = get_current_output_name(stream);
 
     // Iterate on all outputs to focus on the given workspace
-    let outputs = get_outputs(&stream);
+    let outputs = get_outputs(stream);
     for output in outputs.iter() {
         let mut cmd: String = "focus output ".to_string();
-        cmd.push_str(&output.name.as_str());
-        send_command(&stream, &cmd);
+        cmd.push_str(output.name.as_str());
+        send_command(stream, &cmd);
 
-        focus_to_workspace(&stream, &workspace_name);
+        focus_to_workspace(stream, workspace_name);
     }
 
     // Get back to currently focused output
     let mut cmd: String = "focus output ".to_string();
     cmd.push_str(&current_output);
-    send_command(&stream, &cmd);
+    send_command(stream, &cmd);
 }
 
 fn move_container_to_next_output(stream: &UnixStream) {
-    move_container_to_next_or_prev_output(&stream, false);
+    move_container_to_next_or_prev_output(stream, false);
 }
 
 fn move_container_to_prev_output(stream: &UnixStream) {
-    move_container_to_next_or_prev_output(&stream, true);
+    move_container_to_next_or_prev_output(stream, true);
 }
 
 fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) {
-    let outputs = get_outputs(&stream);
+    let outputs = get_outputs(stream);
     let focused_output_index = match outputs
         .iter()
         .position(|x| x.focused)
@@ -224,42 +221,40 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
         None => panic!("WTF! No focused output???"),
     };
 
-    let target_output;
-    if go_to_prev {
-        target_output = &outputs[(focused_output_index - 1 + &outputs.len()) % &outputs.len()];
+    let target_output  = if go_to_prev {
+        &outputs[(focused_output_index - 1 + outputs.len()) % outputs.len()]
     } else {
-        target_output = &outputs[(focused_output_index + 1) % &outputs.len()];
-    }
+        &outputs[(focused_output_index + 1) % outputs.len()]
+    };
 
-    let workspaces = get_workspaces(&stream);
+    let workspaces = get_workspaces(stream);
     let target_workspace = workspaces
         .iter()
-        .filter(|x| {
+        .find(|x| {
             x.output == target_output.name && x.visible
         })
-        .next()
         .unwrap();
 
     // Move container to target workspace
     let mut cmd: String = "move container to workspace number ".to_string();
     cmd.push_str(&target_workspace.num.to_string());
-    send_command(&stream, &cmd);
+    send_command(stream, &cmd);
 
     // Focus that workspace to follow the container
     let mut cmd: String = "workspace number ".to_string();
     cmd.push_str(&target_workspace.num.to_string());
-    send_command(&stream, &cmd);
+    send_command(stream, &cmd);
 }
 
 fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
-    let outputs = get_outputs(&stream);
+    let outputs = get_outputs(stream);
 
     let cmd_prefix: String = "focus output ".to_string();
     for output in outputs.iter().filter(|x| x.active).rev() {
         let mut cmd = cmd_prefix.clone();
-        cmd.push_str(&output.name.as_str());
-        send_command(&stream, &cmd);
-        focus_to_workspace(&stream, &workspace_name);
+        cmd.push_str(output.name.as_str());
+        send_command(stream, &cmd);
+        focus_to_workspace(stream, workspace_name);
     }
 }
 
@@ -328,9 +323,9 @@ fn main() {
         focus_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
     } else if let Some(matches) = matches.subcommand_matches("focus_all_outputs") {
         focus_all_outputs_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
-    } else if let Some(_) = matches.subcommand_matches("next_output") {
+    } else if matches.subcommand_matches("next_output").is_some() {
         move_container_to_next_output(&stream);
-    } else if let Some(_) = matches.subcommand_matches("prev_output") {
+    } else if matches.subcommand_matches("prev_output").is_some() {
         move_container_to_prev_output(&stream);
     }
 }
