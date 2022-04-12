@@ -4,7 +4,7 @@ extern crate serde_json;
 
 use serde::{Deserialize, Serialize};
 
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg, SubCommand, crate_version, crate_authors};
 use std::env;
 use std::io::Cursor;
 use std::io::{Read, Write};
@@ -265,8 +265,8 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
 
 fn main() {
     let matches = App::new("swaysome")
-        .version("1.1.2")
-        .author("Skia <skia@hya.sk>")
+        .version(crate_version!())
+        .author(crate_authors!())
         .about("Better multimonitor handling for sway")
         .subcommand(
             SubCommand::with_name("init")
