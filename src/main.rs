@@ -222,7 +222,7 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     };
 
     let target_output  = if go_to_prev {
-        &outputs[(focused_output_index - 1 + outputs.len()) % outputs.len()]
+        &outputs[(focused_output_index + outputs.len() - 1) % outputs.len()]
     } else {
         &outputs[(focused_output_index + 1) % outputs.len()]
     };
