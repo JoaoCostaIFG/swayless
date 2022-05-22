@@ -1,6 +1,6 @@
 [package]
 name = "swaysome"
-version = "1.1.4"
+version = "1.1.5"
 authors = ["Skia <skia@hya.sk>"]
 edition = "2021"
 description = "swaysome provides a different way to manage your multiple outputs with the sway windows manager"
