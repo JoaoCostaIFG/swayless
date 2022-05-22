@@ -105,6 +105,7 @@ fn check_success(stream: &UnixStream) {
 #[derive(Serialize, Deserialize)]
 struct Output {
     name: String,
+    #[serde(default)]
     focused: bool,
     active: bool,
 }
