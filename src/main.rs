@@ -4,7 +4,7 @@ extern crate serde_json;
 
 use serde::{Deserialize, Serialize};
 
-use clap::{App, Arg, SubCommand, crate_version, crate_authors};
+use clap::{Args, Parser, Subcommand};
 use std::env;
 use std::io::Cursor;
 use std::io::{Read, Write};
@@ -18,6 +18,53 @@ const RUN_COMMAND: u32 = 0;
 const GET_WORKSPACES: u32 = 1;
 // const SUBSCRIBE: u32 = 2;
 const GET_OUTPUTS: u32 = 3;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about = "Better multimonitor handling for sway", long_about = None)]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(subcommand)]
+    command: Command
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    #[clap(about = "Initialize the workspaces for all the outputs")]
+    Init(InitAction),
+
+    #[clap(about = "Move the focused container to another workspace on the same output")]
+    Move(MoveAction),
+
+    #[clap(about = "Focus to another workspace on the same output")]
+    Focus(FocusAction),
+
+    #[clap(about = "Focus to another workspace on all the outputs")]
+    FocusAllOutputs(FocusAction),
+
+    #[clap(about = "Move the focused container to the next output")]
+    NextOutput,
+
+    #[clap(about = "Move the focused container to the previous output")]
+    PrevOutput,
+}
+
+#[derive(Args, Debug)]
+struct InitAction {
+    #[clap(value_name = "index", help = "The index to initialize with")]
+    name: String
+}
+
+#[derive(Args, Debug)]
+struct FocusAction {
+    #[clap(value_name = "index", help = "The index to focus on")]
+    name: String
+}
+
+#[derive(Args, Debug)]
+struct MoveAction {
+    #[clap(value_name = "index", help = "The index to move the container to")]
+    name: String
+}
 
 fn get_stream() -> UnixStream {
     let socket_path = match env::var("I3SOCK") {
@@ -54,7 +101,9 @@ fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
     let mut msg: Vec<u8> = msg_prefix[..].to_vec();
     msg.extend(payload.as_bytes());
 
-    if stream.write_all(&msg[..]).is_err() { panic!("couldn't send message"); }
+    if stream.write_all(&msg[..]).is_err() {
+        panic!("couldn't send message");
+    }
 }
 
 fn send_command(stream: &UnixStream, command: &str) {
@@ -117,7 +166,7 @@ fn get_outputs(stream: &UnixStream) -> Vec<Output> {
         Err(_) => panic!("Unable to get outputs"),
     };
     let mut outputs: Vec<Output> = serde_json::from_str(&o).unwrap();
-    outputs.sort_by(|x, y| x.name.cmp(&y.name));  // sort_by_key doesn't work here (https://stackoverflow.com/a/47126516)
+    outputs.sort_by(|x, y| x.name.cmp(&y.name)); // sort_by_key doesn't work here (https://stackoverflow.com/a/47126516)
     outputs
 }
 
@@ -142,10 +191,7 @@ fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
 fn get_current_output_index(stream: &UnixStream) -> String {
     let outputs = get_outputs(stream);
 
-    let focused_output_index = match outputs
-        .iter()
-        .position(|x| x.focused)
-    {
+    let focused_output_index = match outputs.iter().position(|x| x.focused) {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
     };
@@ -156,10 +202,7 @@ fn get_current_output_index(stream: &UnixStream) -> String {
 fn get_current_output_name(stream: &UnixStream) -> String {
     let outputs = get_outputs(stream);
 
-    let focused_output_index = match outputs
-        .iter()
-        .find(|x| x.focused)
-    {
+    let focused_output_index = match outputs.iter().find(|x| x.focused) {
         Some(i) => i.name.as_str(),
         None => panic!("WTF! No focused output???"),
     };
@@ -214,15 +257,12 @@ fn move_container_to_prev_output(stream: &UnixStream) {
 
 fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) {
     let outputs = get_outputs(stream);
-    let focused_output_index = match outputs
-        .iter()
-        .position(|x| x.focused)
-    {
+    let focused_output_index = match outputs.iter().position(|x| x.focused) {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
     };
 
-    let target_output  = if go_to_prev {
+    let target_output = if go_to_prev {
         &outputs[(focused_output_index + outputs.len() - 1) % outputs.len()]
     } else {
         &outputs[(focused_output_index + 1) % outputs.len()]
@@ -231,9 +271,7 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     let workspaces = get_workspaces(stream);
     let target_workspace = workspaces
         .iter()
-        .find(|x| {
-            x.output == target_output.name && x.visible
-        })
+        .find(|x| x.output == target_output.name && x.visible)
         .unwrap();
 
     // Move container to target workspace
@@ -260,73 +298,27 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
 }
 
 fn main() {
-    let matches = App::new("swaysome")
-        .version(crate_version!())
-        .author(crate_authors!())
-        .about("Better multimonitor handling for sway")
-        .subcommand(
-            SubCommand::with_name("init")
-                .about("Initialize the workspaces for all the outputs")
-                .arg(
-                    Arg::with_name("index")
-                        .help("The index to initialize with")
-                        .required(true)
-                        .takes_value(true),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("focus")
-                .about("Focus to another workspace on the same output")
-                .arg(
-                    Arg::with_name("index")
-                        .help("The index to focus on")
-                        .required(true)
-                        .takes_value(true),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("focus_all_outputs")
-                .about("Focus to another workspace on all the outputs")
-                .arg(
-                    Arg::with_name("index")
-                        .help("The index to focus on")
-                        .required(true)
-                        .takes_value(true),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("move")
-                .about("Move the focused container to another workspace on the same output")
-                .arg(
-                    Arg::with_name("index")
-                        .help("The index to move the container to")
-                        .required(true)
-                        .takes_value(true),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("next_output")
-                .about("Move the focused container to the next output"),
-        )
-        .subcommand(
-            SubCommand::with_name("prev_output")
-                .about("Move the focused container to the previous output"),
-        )
-        .get_matches();
-
+    let cli = Cli::parse();
     let stream = get_stream();
 
-    if let Some(matches) = matches.subcommand_matches("init") {
-        init_workspaces(&stream, &matches.value_of("index").unwrap().to_string());
-    } else if let Some(matches) = matches.subcommand_matches("move") {
-        move_container_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
-    } else if let Some(matches) = matches.subcommand_matches("focus") {
-        focus_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
-    } else if let Some(matches) = matches.subcommand_matches("focus_all_outputs") {
-        focus_all_outputs_to_workspace(&stream, &matches.value_of("index").unwrap().to_string());
-    } else if matches.subcommand_matches("next_output").is_some() {
-        move_container_to_next_output(&stream);
-    } else if matches.subcommand_matches("prev_output").is_some() {
-        move_container_to_prev_output(&stream);
+    match &cli.command {
+        Command::Init(action) => {
+            init_workspaces(&stream, &action.name);
+        }
+        Command::Move(action) => {
+            move_container_to_workspace(&stream, &action.name);
+        }
+        Command::Focus(action) => {
+            focus_to_workspace(&stream, &action.name);
+        }
+        Command::FocusAllOutputs(action) => {
+            focus_all_outputs_to_workspace(&stream, &action.name);
+        }
+        Command::NextOutput => {
+            move_container_to_next_output(&stream);
+        }
+        Command::PrevOutput => {
+            move_container_to_prev_output(&stream);
+        }
     }
 }
