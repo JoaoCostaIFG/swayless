@@ -106,12 +106,6 @@ fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
     }
 }
 
-fn send_command(stream: &UnixStream, command: &str) {
-    eprint!("Sending command: '{}' - ", &command);
-    send_msg(stream, RUN_COMMAND, command);
-    check_success(stream);
-}
-
 fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
     let mut response_header: [u8; 14] = *b"uninitialized.";
     stream.read_exact(&mut response_header).unwrap();
@@ -149,6 +143,12 @@ fn check_success(stream: &UnixStream) {
         }
         Err(_) => panic!("Unable to read response"),
     };
+}
+
+fn send_command(stream: &UnixStream, command: &str) {
+    eprint!("Sending command: '{}' - ", &command);
+    send_msg(stream, RUN_COMMAND, command);
+    check_success(stream);
 }
 
 #[derive(Serialize, Deserialize)]
