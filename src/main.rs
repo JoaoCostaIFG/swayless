@@ -24,7 +24,7 @@ const GET_OUTPUTS: u32 = 3;
 #[clap(propagate_version = true)]
 struct Cli {
     #[clap(subcommand)]
-    command: Command
+    command: Command,
 }
 
 #[derive(Subcommand, Debug)]
@@ -51,19 +51,19 @@ enum Command {
 #[derive(Args, Debug)]
 struct InitAction {
     #[clap(value_name = "index", help = "The index to initialize with")]
-    name: String
+    name: String,
 }
 
 #[derive(Args, Debug)]
 struct FocusAction {
     #[clap(value_name = "index", help = "The index to focus on")]
-    name: String
+    name: String,
 }
 
 #[derive(Args, Debug)]
 struct MoveAction {
     #[clap(value_name = "index", help = "The index to move the container to")]
-    name: String
+    name: String,
 }
 
 fn get_stream() -> UnixStream {
@@ -188,7 +188,7 @@ fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
     workspaces
 }
 
-fn get_current_output_index(stream: &UnixStream) -> String {
+fn get_current_output_index(stream: &UnixStream) -> usize {
     let outputs = get_outputs(stream);
 
     let focused_output_index = match outputs.iter().position(|x| x.focused) {
@@ -196,7 +196,7 @@ fn get_current_output_index(stream: &UnixStream) -> String {
         None => panic!("WTF! No focused output???"),
     };
 
-    format!("{}", focused_output_index)
+    focused_output_index
 }
 
 fn get_current_output_name(stream: &UnixStream) -> String {
@@ -210,21 +210,32 @@ fn get_current_output_name(stream: &UnixStream) -> String {
     focused_output_index.to_string()
 }
 
+fn get_container_name(workspace_name: &String, output_index: usize) -> String {
+    if output_index == 0 {
+        format!("{}", workspace_name)
+    } else {
+        const SUPERSCRIPT_DIGITS: [&str; 10] = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
+        let output_index_superscript: String = (output_index + 1)
+            .to_string()
+            .chars()
+            .map(|c| SUPERSCRIPT_DIGITS[c.to_digit(10).unwrap() as usize])
+            .collect();
+
+        format!("{}{}", &workspace_name, output_index_superscript)
+    }
+}
+
 fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
-    let mut cmd: String = "move container to workspace number ".to_string();
-    let full_ws_name = format!("{}{}", get_current_output_index(stream), &workspace_name)
-        .parse::<i32>()
-        .unwrap();
-    cmd.push_str(&full_ws_name.to_string());
+    let mut cmd: String = "move container to workspace ".to_string();
+    let full_ws_name = get_container_name(workspace_name, get_current_output_index(stream));
+    cmd.push_str(&full_ws_name);
     send_command(stream, &cmd);
 }
 
 fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
-    let mut cmd: String = "workspace number ".to_string();
-    let full_ws_name = format!("{}{}", get_current_output_index(stream), &workspace_name)
-        .parse::<i32>()
-        .unwrap();
-    cmd.push_str(&full_ws_name.to_string());
+    let mut cmd: String = "workspace ".to_string();
+    let full_ws_name = get_container_name(workspace_name, get_current_output_index(stream));
+    cmd.push_str(&full_ws_name);
     send_command(stream, &cmd);
 }
 
@@ -275,12 +286,12 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
         .unwrap();
 
     // Move container to target workspace
-    let mut cmd: String = "move container to workspace number ".to_string();
+    let mut cmd: String = "move container to workspace ".to_string();
     cmd.push_str(&target_workspace.num.to_string());
     send_command(stream, &cmd);
 
     // Focus that workspace to follow the container
-    let mut cmd: String = "workspace number ".to_string();
+    let mut cmd: String = "workspace ".to_string();
     cmd.push_str(&target_workspace.num.to_string());
     send_command(stream, &cmd);
 }
