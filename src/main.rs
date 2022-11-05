@@ -5,12 +5,12 @@ extern crate serde_json;
 use serde::{Deserialize, Serialize};
 
 use clap::{Args, Parser, Subcommand};
-use std::env;
 use std::io::Cursor;
 use std::io::{Read, Write};
 use std::mem;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::{env, fs};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -308,28 +308,62 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
     }
 }
 
-fn main() {
-    let cli = Cli::parse();
-    let stream = get_stream();
+static SOCKET_PATH: &str = "/tmp/swayless.sock";
 
-    match &cli.command {
-        Command::Init(action) => {
-            init_workspaces(&stream, &action.name);
-        }
-        Command::Move(action) => {
-            move_container_to_workspace(&stream, &action.name);
-        }
-        Command::Focus(action) => {
-            focus_to_workspace(&stream, &action.name);
-        }
-        Command::FocusAllOutputs(action) => {
-            focus_all_outputs_to_workspace(&stream, &action.name);
-        }
-        Command::NextOutput => {
-            move_container_to_next_output(&stream);
-        }
-        Command::PrevOutput => {
-            move_container_to_prev_output(&stream);
+fn main() {
+    let socket = Path::new(SOCKET_PATH);
+    if socket.exists() {
+        fs::remove_file(&socket).unwrap();
+    }
+
+    let listener = match UnixListener::bind(&socket) {
+        Err(_) => panic!("failed to bind socket"),
+        Ok(listener) => listener,
+    };
+
+    println!("Server started, waiting for clients");
+
+    // iterate over clients, blocks if no client available
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                // connection succeeded
+                let mut buf = [0; 1024];
+                let count = stream.read(&mut buf).unwrap();
+                let cmd = String::from_utf8(buf[..count].to_vec()).unwrap();
+                println!("Client said: {}", cmd.to_string());
+            }
+            Err(err) => {
+                // connection failed
+                println!("{}", err);
+                break;
+            }
         }
     }
+
+    /*
+     *     let cli = Cli::parse();
+     *     let stream = get_stream();
+     *
+     *     match &cli.command {
+     *         Command::Init(action) => {
+     *             init_workspaces(&stream, &action.name);
+     *         }
+     *         Command::Move(action) => {
+     *             move_container_to_workspace(&stream, &action.name);
+     *         }
+     *         Command::Focus(action) => {
+     *             focus_to_workspace(&stream, &action.name);
+     *         }
+     *         Command::FocusAllOutputs(action) => {
+     *             focus_all_outputs_to_workspace(&stream, &action.name);
+     *         }
+     *         Command::NextOutput => {
+     *             move_container_to_next_output(&stream);
+     *         }
+     *         Command::PrevOutput => {
+     *             move_container_to_prev_output(&stream);
+     *         }
+     *     }
+     */
 }
