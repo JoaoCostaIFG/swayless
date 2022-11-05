@@ -1,12 +1,12 @@
 [package]
-name = "swaysome"
+name = "swayless"
 version = "1.1.5"
-authors = ["Skia <skia@hya.sk>"]
-edition = "2021"
-description = "swaysome provides a different way to manage your multiple outputs with the sway windows manager"
+authors = ["JoaoCostaIFG <joaocosta.work@posteo.net>"]
+edition = "2022"
+description = "swayless is an attempt to bring Suckless' tag system to sway"
 license = "MIT"
-repository = "https://gitlab.com/hyask/swaysome"
-homepage = "https://gitlab.com/hyask/swaysome"
+repository = "https://github.com/JoaoCostaIFG/swayless"
+homepage = "https://github.com/JoaoCostaIFG/swayless"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

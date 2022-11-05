@@ -1,23 +1,31 @@
-# Swaysome
+# Swayless
+
+WIP
 
 This binary helps you configure sway to work a bit more like Awesome. This
 currently means workspaces that are name-spaced on a per-screen basis.
 
 It may also work with i3, but this is untested.
 
-*swaysome* is compatible with [sworkstyle](https://lib.rs/crates/sworkstyle).
+_swaysome_ is compatible with [sworkstyle](https://lib.rs/crates/sworkstyle).
 
+## Credits
+
+Code is adapted from [Swaysome](https://gitlab.com/hyask/swaysome) by
+[Skia](https://gitlab.com/hyask). [Original license](./LICENSE.Skia).
 
 ## Usage
 
-If you have Rust installed, then you can just `cargo install swaysome` and you're good to go.
+If you have Rust installed, then you can just `cargo install swaysome` and
+you're good to go.
 
-Otherwise, you may grab a [pre-built
-binary](https://gitlab.com/hyask/swaysome/-/jobs/artifacts/master/raw/target/release/swaysome?job=build:cargo) from the
-CI and put it in your `$PATH`.
+Otherwise, you may grab a
+[pre-built binary](https://gitlab.com/hyask/swaysome/-/jobs/artifacts/master/raw/target/release/swaysome?job=build:cargo)
+from the CI and put it in your `$PATH`.
 
+Then create the file (and the directory if needed)
+"~/.config/sway/config.d/swaysome.conf" and paste this inside:
 
-Then create the file (and the directory if needed) "~/.config/sway/config.d/swaysome.conf" and paste this inside:
 ```
 # Change focus between workspaces
 unbindsym $mod+1
@@ -74,6 +82,7 @@ exec "swaysome init 1"
 ```
 
 Finally append your `sway` configuration with this:
+
 ```
 include ~/.config/sway/config.d/*.conf
 ```
@@ -86,13 +95,12 @@ The `init` command simply walks through every screen to initialize a prefixed
 workspace. It does it backwards so that you end-up focused on the first screen,
 as usual.
 
-
 ## Exhaustive swaysome commands list
 
-* `move [name]`: move the focused container to `[name]`
-* `next_output`: move the focused container to the next output
-* `prev_output`: move the focused container to the previous output
-* `focus [name]`: change focus to `[name]`
-* `focus_all_outputs [name]`: change all outputs focus to `[name]`
-* `init [name]`: cycle all outputs to create a default workspace with name `[name]`
-
+- `move [name]`: move the focused container to `[name]`
+- `next_output`: move the focused container to the next output
+- `prev_output`: move the focused container to the previous output
+- `focus [name]`: change focus to `[name]`
+- `focus_all_outputs [name]`: change all outputs focus to `[name]`
+- `init [name]`: cycle all outputs to create a default workspace with name
+  `[name]`
