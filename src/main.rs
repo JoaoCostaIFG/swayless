@@ -4,6 +4,8 @@ extern crate serde_json;
 
 use serde::{Deserialize, Serialize};
 
+use swayipc::{Connection, Fallible};
+
 use clap::{Args, Parser, Subcommand};
 use std::env;
 use std::io::Cursor;
@@ -66,89 +68,20 @@ struct MoveAction {
     name: String,
 }
 
-fn get_stream() -> UnixStream {
-    let socket_path = match env::var("I3SOCK") {
-        Ok(val) => val,
+fn get_sway_conn() -> Connection {
+    let mut connection = match Connection::new() {
+        Ok(connection) => connection,
         Err(_e) => {
             panic!("couldn't find i3/sway socket");
         }
     };
-
-    let socket = Path::new(&socket_path);
-
-    match UnixStream::connect(&socket) {
-        Err(_) => panic!("couldn't connect to i3/sway socket"),
-        Ok(stream) => stream,
-    }
+    connection
 }
 
-fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
-    let payload_length = payload.len() as u32;
-
-    let mut msg_prefix: [u8; 6 * mem::size_of::<u8>() + 2 * mem::size_of::<u32>()] =
-        *b"i3-ipc00000000";
-
-    msg_prefix[6..]
-        .as_mut()
-        .write_u32::<LittleEndian>(payload_length)
-        .expect("Unable to write");
-
-    msg_prefix[10..]
-        .as_mut()
-        .write_u32::<LittleEndian>(msg_type)
-        .expect("Unable to write");
-
-    let mut msg: Vec<u8> = msg_prefix[..].to_vec();
-    msg.extend(payload.as_bytes());
-
-    if stream.write_all(&msg[..]).is_err() {
-        panic!("couldn't send message");
-    }
-}
-
-fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
-    let mut response_header: [u8; 14] = *b"uninitialized.";
-    stream.read_exact(&mut response_header).unwrap();
-
-    if &response_header[0..6] == b"i3-ipc" {
-        let mut v = Cursor::new(vec![
-            response_header[6],
-            response_header[7],
-            response_header[8],
-            response_header[9],
-        ]);
-        let payload_length = v.read_u32::<LittleEndian>().unwrap();
-
-        let mut payload = vec![0; payload_length as usize];
-        stream.read_exact(&mut payload[..]).unwrap();
-        let payload_str = String::from_utf8(payload).unwrap();
-        Ok(payload_str)
-    } else {
-        eprint!("Not an i3-icp packet, emptying the buffer: ");
-        let mut v = vec![];
-        stream.read_to_end(&mut v).unwrap();
-        eprintln!("{:?}", v);
-        Err("Unable to read i3-ipc packet")
-    }
-}
-
-fn check_success(stream: &UnixStream) {
-    match read_msg(stream) {
-        Ok(msg) => {
-            let r: Vec<serde_json::Value> = serde_json::from_str(&msg).unwrap();
-            match r[0]["success"] {
-                serde_json::Value::Bool(true) => eprintln!("Command successful"),
-                _ => panic!("Command failed: {:#?}", r),
-            }
-        }
-        Err(_) => panic!("Unable to read response"),
-    };
-}
-
-fn send_command(stream: &UnixStream, command: &str) {
+fn send_command(connection: &Connection, command: &str) -> Vec<Result<(), swayipc::Error>> {
     eprint!("Sending command: '{}' - ", &command);
-    send_msg(stream, RUN_COMMAND, command);
-    check_success(stream);
+    let result = connection.run_command(&command).unwrap();
+    result
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,7 +92,7 @@ struct Output {
     active: bool,
 }
 
-fn get_outputs(stream: &UnixStream) -> Vec<Output> {
+fn get_outputs(connection: &Connection) -> Vec<Output> {
     send_msg(stream, GET_OUTPUTS, "");
     let o = match read_msg(stream) {
         Ok(msg) => msg,
@@ -177,7 +110,7 @@ struct Workspace {
     visible: bool,
 }
 
-fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
+fn get_workspaces(connection: &Connection) -> Vec<Workspace> {
     send_msg(stream, GET_WORKSPACES, "");
     let ws = match read_msg(stream) {
         Ok(msg) => msg,
@@ -188,7 +121,7 @@ fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
     workspaces
 }
 
-fn get_current_output_index(stream: &UnixStream) -> usize {
+fn get_current_output_index(connection: &Connection) -> usize {
     let outputs = get_outputs(stream);
 
     let focused_output_index = match outputs.iter().position(|x| x.focused) {
@@ -199,7 +132,7 @@ fn get_current_output_index(stream: &UnixStream) -> usize {
     focused_output_index
 }
 
-fn get_current_output_name(stream: &UnixStream) -> String {
+fn get_current_output_name(connection: &Connection) -> String {
     let outputs = get_outputs(stream);
 
     let focused_output_index = match outputs.iter().find(|x| x.focused) {
@@ -225,21 +158,21 @@ fn get_container_name(workspace_name: &String, output_index: usize) -> String {
     }
 }
 
-fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
+fn move_container_to_workspace(connection: &Connection, workspace_name: &String) {
     let mut cmd: String = "move container to workspace ".to_string();
     let full_ws_name = get_container_name(workspace_name, get_current_output_index(stream));
     cmd.push_str(&full_ws_name);
     send_command(stream, &cmd);
 }
 
-fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
+fn focus_to_workspace(connection: &Connection, workspace_name: &String) {
     let mut cmd: String = "workspace ".to_string();
     let full_ws_name = get_container_name(workspace_name, get_current_output_index(stream));
     cmd.push_str(&full_ws_name);
     send_command(stream, &cmd);
 }
 
-fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) {
+fn focus_all_outputs_to_workspace(connection: &Connection, workspace_name: &String) {
     let current_output = get_current_output_name(stream);
 
     // Iterate on all outputs to focus on the given workspace
@@ -258,15 +191,7 @@ fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) 
     send_command(stream, &cmd);
 }
 
-fn move_container_to_next_output(stream: &UnixStream) {
-    move_container_to_next_or_prev_output(stream, false);
-}
-
-fn move_container_to_prev_output(stream: &UnixStream) {
-    move_container_to_next_or_prev_output(stream, true);
-}
-
-fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) {
+fn move_container_to_next_or_prev_output(connection: &Connection, go_to_prev: bool) {
     let outputs = get_outputs(stream);
     let focused_output_index = match outputs.iter().position(|x| x.focused) {
         Some(i) => i,
@@ -296,7 +221,15 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     send_command(stream, &cmd);
 }
 
-fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
+fn move_container_to_next_output(connection: &Connection) {
+    move_container_to_next_or_prev_output(stream, false);
+}
+
+fn move_container_to_prev_output(connection: &Connection) {
+    move_container_to_next_or_prev_output(stream, true);
+}
+
+fn init_workspaces(sway_conn: &Connection, workspace_name: &String) {
     let outputs = get_outputs(stream);
 
     let cmd_prefix: String = "focus output ".to_string();
@@ -310,26 +243,26 @@ fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
 
 fn main() {
     let cli = Cli::parse();
-    let stream = get_stream();
+    let sway_conn = get_sway_conn();
 
     match &cli.command {
         Command::Init(action) => {
-            init_workspaces(&stream, &action.name);
+            init_workspaces(&sway_conn, &action.name);
         }
         Command::Move(action) => {
-            move_container_to_workspace(&stream, &action.name);
+            move_container_to_workspace(&sway_conn, &action.name);
         }
         Command::Focus(action) => {
-            focus_to_workspace(&stream, &action.name);
+            focus_to_workspace(&sway_conn, &action.name);
         }
         Command::FocusAllOutputs(action) => {
-            focus_all_outputs_to_workspace(&stream, &action.name);
+            focus_all_outputs_to_workspace(&sway_conn, &action.name);
         }
         Command::NextOutput => {
-            move_container_to_next_output(&stream);
+            move_container_to_next_output(&sway_conn);
         }
         Command::PrevOutput => {
-            move_container_to_prev_output(&stream);
+            move_container_to_prev_output(&sway_conn);
         }
     }
 }
