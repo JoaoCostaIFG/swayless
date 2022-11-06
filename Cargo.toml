@@ -2,7 +2,7 @@
 name = "swayless"
 version = "1.1.5"
 authors = ["JoaoCostaIFG <joaocosta.work@posteo.net>"]
-edition = "2022"
+edition = "2021"
 description = "swayless is an attempt to bring Suckless' tag system to sway"
 license = "MIT"
 repository = "https://github.com/JoaoCostaIFG/swayless"
@@ -15,3 +15,4 @@ byteorder = "1.4.3"
 clap = { version = "3.2.16", features = ["derive"] }
 serde = { version = "1.0.141", features = ["derive"] }
 serde_json = "1.0.82"
+swayipc = "3.0.1"

@@ -2,22 +2,16 @@ extern crate byteorder;
 extern crate clap;
 extern crate serde_json;
 
-use serde::{Deserialize, Serialize};
+use swayipc::{Connection, Output, Workspace};
 
 use clap::{Args, Parser, Subcommand};
-use std::io::Cursor;
+use std::fmt::format;
+use std::fs;
 use std::io::{Read, Write};
-use std::mem;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::{env, fs};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-
-const RUN_COMMAND: u32 = 0;
-const GET_WORKSPACES: u32 = 1;
-// const SUBSCRIBE: u32 = 2;
-const GET_OUTPUTS: u32 = 3;
+static SOCKET_PATH: &str = "/tmp/swayless.sock";
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about = "Better multimonitor handling for sway", long_about = None)]
@@ -30,7 +24,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     #[clap(about = "Initialize the workspaces for all the outputs")]
-    Init(InitAction),
+    Init,
 
     #[clap(about = "Move the focused container to another workspace on the same output")]
     Move(MoveAction),
@@ -49,12 +43,6 @@ enum Command {
 }
 
 #[derive(Args, Debug)]
-struct InitAction {
-    #[clap(value_name = "index", help = "The index to initialize with")]
-    name: String,
-}
-
-#[derive(Args, Debug)]
 struct FocusAction {
     #[clap(value_name = "index", help = "The index to focus on")]
     name: String,
@@ -66,130 +54,51 @@ struct MoveAction {
     name: String,
 }
 
-fn get_stream() -> UnixStream {
-    let socket_path = match env::var("I3SOCK") {
-        Ok(val) => val,
+fn get_sway_conn() -> Connection {
+    let mut connection = match Connection::new() {
+        Ok(connection) => connection,
         Err(_e) => {
             panic!("couldn't find i3/sway socket");
         }
     };
-
-    let socket = Path::new(&socket_path);
-
-    match UnixStream::connect(&socket) {
-        Err(_) => panic!("couldn't connect to i3/sway socket"),
-        Ok(stream) => stream,
-    }
+    connection
 }
 
-fn send_msg(mut stream: &UnixStream, msg_type: u32, payload: &str) {
-    let payload_length = payload.len() as u32;
+fn run_command(connection: &mut Connection, command: &str) {
+    eprintln!("Running command: [cmd={}]", &command);
+    let results = match connection.run_command(&command) {
+        Ok(results) => results,
+        Err(err) => panic!(
+            "Failed running command: [command={}], [error={}]",
+            command, err
+        ),
+    };
 
-    let mut msg_prefix: [u8; 6 * mem::size_of::<u8>() + 2 * mem::size_of::<u32>()] =
-        *b"i3-ipc00000000";
-
-    msg_prefix[6..]
-        .as_mut()
-        .write_u32::<LittleEndian>(payload_length)
-        .expect("Unable to write");
-
-    msg_prefix[10..]
-        .as_mut()
-        .write_u32::<LittleEndian>(msg_type)
-        .expect("Unable to write");
-
-    let mut msg: Vec<u8> = msg_prefix[..].to_vec();
-    msg.extend(payload.as_bytes());
-
-    if stream.write_all(&msg[..]).is_err() {
-        panic!("couldn't send message");
-    }
-}
-
-fn read_msg(mut stream: &UnixStream) -> Result<String, &str> {
-    let mut response_header: [u8; 14] = *b"uninitialized.";
-    stream.read_exact(&mut response_header).unwrap();
-
-    if &response_header[0..6] == b"i3-ipc" {
-        let mut v = Cursor::new(vec![
-            response_header[6],
-            response_header[7],
-            response_header[8],
-            response_header[9],
-        ]);
-        let payload_length = v.read_u32::<LittleEndian>().unwrap();
-
-        let mut payload = vec![0; payload_length as usize];
-        stream.read_exact(&mut payload[..]).unwrap();
-        let payload_str = String::from_utf8(payload).unwrap();
-        Ok(payload_str)
-    } else {
-        eprint!("Not an i3-icp packet, emptying the buffer: ");
-        let mut v = vec![];
-        stream.read_to_end(&mut v).unwrap();
-        eprintln!("{:?}", v);
-        Err("Unable to read i3-ipc packet")
-    }
-}
-
-fn check_success(stream: &UnixStream) {
-    match read_msg(stream) {
-        Ok(msg) => {
-            let r: Vec<serde_json::Value> = serde_json::from_str(&msg).unwrap();
-            match r[0]["success"] {
-                serde_json::Value::Bool(true) => eprintln!("Command successful"),
-                _ => panic!("Command failed: {:#?}", r),
-            }
+    for res in results {
+        if res.is_err() {
+            panic!("Failed running command: [command={}]", command)
         }
-        Err(_) => panic!("Unable to read response"),
+    }
+}
+
+fn get_outputs(connection: &mut Connection) -> Vec<Output> {
+    let outputs = match connection.get_outputs() {
+        Ok(outputs) => outputs,
+        Err(err) => panic!("Failed getting outputs: [error={}]", err),
     };
-}
-
-fn send_command(stream: &UnixStream, command: &str) {
-    eprint!("Sending command: '{}' - ", &command);
-    send_msg(stream, RUN_COMMAND, command);
-    check_success(stream);
-}
-
-#[derive(Serialize, Deserialize)]
-struct Output {
-    name: String,
-    #[serde(default)]
-    focused: bool,
-    active: bool,
-}
-
-fn get_outputs(stream: &UnixStream) -> Vec<Output> {
-    send_msg(stream, GET_OUTPUTS, "");
-    let o = match read_msg(stream) {
-        Ok(msg) => msg,
-        Err(_) => panic!("Unable to get outputs"),
-    };
-    let mut outputs: Vec<Output> = serde_json::from_str(&o).unwrap();
-    outputs.sort_by(|x, y| x.name.cmp(&y.name)); // sort_by_key doesn't work here (https://stackoverflow.com/a/47126516)
     outputs
 }
 
-#[derive(Serialize, Deserialize)]
-struct Workspace {
-    num: u32,
-    output: String,
-    visible: bool,
-}
-
-fn get_workspaces(stream: &UnixStream) -> Vec<Workspace> {
-    send_msg(stream, GET_WORKSPACES, "");
-    let ws = match read_msg(stream) {
-        Ok(msg) => msg,
-        Err(_) => panic!("Unable to get current workspace"),
+fn get_workspaces(connection: &mut Connection) -> Vec<Workspace> {
+    let workspaces = match connection.get_workspaces() {
+        Ok(workspaces) => workspaces,
+        Err(err) => panic!("Failed getting workspaces: [error={}]", err),
     };
-    let mut workspaces: Vec<Workspace> = serde_json::from_str(&ws).unwrap();
-    workspaces.sort_by_key(|x| x.num);
     workspaces
 }
 
-fn get_current_output_index(stream: &UnixStream) -> usize {
-    let outputs = get_outputs(stream);
+fn get_current_output_index(connection: &mut Connection) -> usize {
+    let outputs = get_outputs(connection);
 
     let focused_output_index = match outputs.iter().position(|x| x.focused) {
         Some(i) => i,
@@ -199,8 +108,8 @@ fn get_current_output_index(stream: &UnixStream) -> usize {
     focused_output_index
 }
 
-fn get_current_output_name(stream: &UnixStream) -> String {
-    let outputs = get_outputs(stream);
+fn get_current_output_name(connection: &mut Connection) -> String {
+    let outputs = get_outputs(connection);
 
     let focused_output_index = match outputs.iter().find(|x| x.focused) {
         Some(i) => i.name.as_str(),
@@ -225,49 +134,41 @@ fn get_container_name(workspace_name: &String, output_index: usize) -> String {
     }
 }
 
-fn move_container_to_workspace(stream: &UnixStream, workspace_name: &String) {
+fn move_container_to_workspace(connection: &mut Connection, workspace_name: &String) {
     let mut cmd: String = "move container to workspace ".to_string();
-    let full_ws_name = get_container_name(workspace_name, get_current_output_index(stream));
+    let full_ws_name = get_container_name(workspace_name, get_current_output_index(connection));
     cmd.push_str(&full_ws_name);
-    send_command(stream, &cmd);
+    run_command(connection, &cmd);
 }
 
-fn focus_to_workspace(stream: &UnixStream, workspace_name: &String) {
+fn focus_to_workspace(connection: &mut Connection, workspace_name: &String) {
     let mut cmd: String = "workspace ".to_string();
-    let full_ws_name = get_container_name(workspace_name, get_current_output_index(stream));
+    let full_ws_name = get_container_name(workspace_name, get_current_output_index(connection));
     cmd.push_str(&full_ws_name);
-    send_command(stream, &cmd);
+    run_command(connection, &cmd);
 }
 
-fn focus_all_outputs_to_workspace(stream: &UnixStream, workspace_name: &String) {
-    let current_output = get_current_output_name(stream);
+fn focus_all_outputs_to_workspace(connection: &mut Connection, workspace_name: &String) {
+    let current_output = get_current_output_name(connection);
 
     // Iterate on all outputs to focus on the given workspace
-    let outputs = get_outputs(stream);
+    let outputs = get_outputs(connection);
     for output in outputs.iter() {
         let mut cmd: String = "focus output ".to_string();
         cmd.push_str(output.name.as_str());
-        send_command(stream, &cmd);
+        run_command(connection, &cmd);
 
-        focus_to_workspace(stream, workspace_name);
+        focus_to_workspace(connection, workspace_name);
     }
 
     // Get back to currently focused output
     let mut cmd: String = "focus output ".to_string();
     cmd.push_str(&current_output);
-    send_command(stream, &cmd);
+    run_command(connection, &cmd);
 }
 
-fn move_container_to_next_output(stream: &UnixStream) {
-    move_container_to_next_or_prev_output(stream, false);
-}
-
-fn move_container_to_prev_output(stream: &UnixStream) {
-    move_container_to_next_or_prev_output(stream, true);
-}
-
-fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) {
-    let outputs = get_outputs(stream);
+fn move_container_to_next_or_prev_output(connection: &mut Connection, go_to_prev: bool) {
+    let outputs = get_outputs(connection);
     let focused_output_index = match outputs.iter().position(|x| x.focused) {
         Some(i) => i,
         None => panic!("WTF! No focused output???"),
@@ -279,7 +180,7 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
         &outputs[(focused_output_index + 1) % outputs.len()]
     };
 
-    let workspaces = get_workspaces(stream);
+    let workspaces = get_workspaces(connection);
     let target_workspace = workspaces
         .iter()
         .find(|x| x.output == target_output.name && x.visible)
@@ -288,31 +189,42 @@ fn move_container_to_next_or_prev_output(stream: &UnixStream, go_to_prev: bool) 
     // Move container to target workspace
     let mut cmd: String = "move container to workspace ".to_string();
     cmd.push_str(&target_workspace.num.to_string());
-    send_command(stream, &cmd);
+    run_command(connection, &cmd);
 
     // Focus that workspace to follow the container
     let mut cmd: String = "workspace ".to_string();
     cmd.push_str(&target_workspace.num.to_string());
-    send_command(stream, &cmd);
+    run_command(connection, &cmd);
 }
 
-fn init_workspaces(stream: &UnixStream, workspace_name: &String) {
-    let outputs = get_outputs(stream);
+fn move_container_to_next_output(connection: &mut Connection) {
+    move_container_to_next_or_prev_output(connection, false);
+}
+
+fn move_container_to_prev_output(connection: &mut Connection) {
+    move_container_to_next_or_prev_output(connection, true);
+}
+
+fn init() {
+    let mut sway_conn = get_sway_conn();
+
+    let outputs = get_outputs(&mut sway_conn);
 
     let cmd_prefix: String = "focus output ".to_string();
     for output in outputs.iter().filter(|x| x.active).rev() {
         let mut cmd = cmd_prefix.clone();
         cmd.push_str(output.name.as_str());
-        send_command(stream, &cmd);
-        focus_to_workspace(stream, workspace_name);
+        run_command(&mut sway_conn, &cmd);
+        focus_to_workspace(&mut sway_conn, &1.to_string());
     }
+
+    listen_to_cmds();
 }
 
-static SOCKET_PATH: &str = "/tmp/swayless.sock";
-
-fn main() {
+fn listen_to_cmds() {
     let socket = Path::new(SOCKET_PATH);
     if socket.exists() {
+        eprintln!("Socket exists. Destroying it...");
         fs::remove_file(&socket).unwrap();
     }
 
@@ -331,39 +243,67 @@ fn main() {
                 let mut buf = [0; 1024];
                 let count = stream.read(&mut buf).unwrap();
                 let cmd = String::from_utf8(buf[..count].to_vec()).unwrap();
-                println!("Client said: {}", cmd.to_string());
+                handle_cmd(&cmd.to_string());
             }
-            Err(err) => {
-                // connection failed
-                println!("{}", err);
-                break;
-            }
-        }
+            Err(err) => eprintln!("Failed handling client request: [err={}]", err),
+        };
+    }
+}
+
+fn handle_cmd(cmd: &String) {
+    println!("Client said: {}", cmd);
+    // Command::Move(action) => {
+    // move_container_to_workspace(&mut sway_conn, &action.name);
+    // }
+    // Command::Focus(action) => {
+    // focus_to_workspace(&mut sway_conn, &action.name);
+    // }
+    // Command::FocusAllOutputs(action) => {
+    // focus_all_outputs_to_workspace(&mut sway_conn, &action.name);
+    // }
+    // Command::NextOutput => {
+    // move_container_to_next_output(&mut sway_conn);
+    // }
+    // Command::PrevOutput => {
+    // move_container_to_prev_output(&mut sway_conn);
+    // }
+}
+
+fn send_cmd(cmd: &str) {
+    let socket = Path::new(SOCKET_PATH);
+    if !socket.exists() {
+        panic!("Socket doesn't exist. Run init command first.");
     }
 
-    /*
-     *     let cli = Cli::parse();
-     *     let stream = get_stream();
-     *
-     *     match &cli.command {
-     *         Command::Init(action) => {
-     *             init_workspaces(&stream, &action.name);
-     *         }
-     *         Command::Move(action) => {
-     *             move_container_to_workspace(&stream, &action.name);
-     *         }
-     *         Command::Focus(action) => {
-     *             focus_to_workspace(&stream, &action.name);
-     *         }
-     *         Command::FocusAllOutputs(action) => {
-     *             focus_all_outputs_to_workspace(&stream, &action.name);
-     *         }
-     *         Command::NextOutput => {
-     *             move_container_to_next_output(&stream);
-     *         }
-     *         Command::PrevOutput => {
-     *             move_container_to_prev_output(&stream);
-     *         }
-     *     }
-     */
+    let mut stream = match UnixStream::connect(&socket) {
+        Ok(stream) => stream,
+        Err(_) => panic!("Failed to bind socket."),
+    };
+
+    stream.write_fmt(format_args!("{}", cmd)).unwrap();
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Command::Init => {
+            init();
+        }
+        Command::Move(action) => {
+            send_cmd(&format!("move {}", action.name));
+        }
+        Command::Focus(action) => {
+            send_cmd(&format!("focus {}", action.name));
+        }
+        Command::FocusAllOutputs(action) => {
+            send_cmd(&format!("focus_all {}", action.name));
+        }
+        Command::NextOutput => {
+            send_cmd("next");
+        }
+        Command::PrevOutput => {
+            send_cmd("prev");
+        }
+    }
 }
