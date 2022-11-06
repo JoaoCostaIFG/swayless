@@ -6,9 +6,7 @@ use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use swayipc::{Connection, Output, Workspace};
 
-use std::fmt::format;
 use std::fs;
-use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 
@@ -219,10 +217,10 @@ fn init() {
         //focus_to_workspace(&mut sway_conn, &1.to_string());
     }
 
-    listen_to_cmds();
+    listen_to_cmds(&mut sway_conn);
 }
 
-fn listen_to_cmds() {
+fn listen_to_cmds(connection: &mut Connection) {
     let socket = Path::new(SOCKET_PATH);
     if socket.exists() {
         eprintln!("Socket exists. Destroying it...");
@@ -242,32 +240,32 @@ fn listen_to_cmds() {
             Ok(stream) => {
                 // connection succeeded
                 let cmd: Command = serde_json::from_reader(stream).unwrap();
-                handle_cmd(&cmd);
+                handle_cmd(connection, &cmd);
             }
             Err(err) => eprintln!("Failed handling client request: [err={}]", err),
         };
     }
 }
 
-fn handle_cmd(cmd: &Command) {
+fn handle_cmd(connection: &mut Connection, cmd: &Command) {
     match cmd {
         Command::Init => {
             eprintln!("Shouldn't have received init command. Ignoring.");
         }
         Command::Move(action) => {
-            println!("{}", action.name);
+            move_container_to_workspace(connection, &action.name);
         }
         Command::Focus(action) => {
-            println!("{}", action.name);
+            focus_to_workspace(connection, &action.name);
         }
         Command::FocusAllOutputs(action) => {
-            println!("{}", action.name);
+            focus_all_outputs_to_workspace(connection, &action.name);
         }
         Command::NextOutput => {
-            println!("next");
+            move_container_to_next_output(connection);
         }
         Command::PrevOutput => {
-            println!("prev");
+            move_container_to_prev_output(connection);
         }
     }
 }
