@@ -2,9 +2,10 @@ extern crate byteorder;
 extern crate clap;
 extern crate serde_json;
 
+use clap::{Args, Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 use swayipc::{Connection, Output, Workspace};
 
-use clap::{Args, Parser, Subcommand};
 use std::fmt::format;
 use std::fs;
 use std::io::{Read, Write};
@@ -21,7 +22,7 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Serialize, Deserialize)]
 enum Command {
     #[clap(about = "Initialize the workspaces for all the outputs")]
     Init,
@@ -42,13 +43,13 @@ enum Command {
     PrevOutput,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Serialize, Deserialize)]
 struct FocusAction {
     #[clap(value_name = "index", help = "The index to focus on")]
     name: String,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Serialize, Deserialize)]
 struct MoveAction {
     #[clap(value_name = "index", help = "The index to move the container to")]
     name: String,
@@ -214,8 +215,8 @@ fn init() {
     for output in outputs.iter().filter(|x| x.active).rev() {
         let mut cmd = cmd_prefix.clone();
         cmd.push_str(output.name.as_str());
-        run_command(&mut sway_conn, &cmd);
-        focus_to_workspace(&mut sway_conn, &1.to_string());
+        //run_command(&mut sway_conn, &cmd);
+        //focus_to_workspace(&mut sway_conn, &1.to_string());
     }
 
     listen_to_cmds();
@@ -238,49 +239,51 @@ fn listen_to_cmds() {
     // iterate over clients, blocks if no client available
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => {
+            Ok(stream) => {
                 // connection succeeded
-                let mut buf = [0; 1024];
-                let count = stream.read(&mut buf).unwrap();
-                let cmd = String::from_utf8(buf[..count].to_vec()).unwrap();
-                handle_cmd(&cmd.to_string());
+                let cmd: Command = serde_json::from_reader(stream).unwrap();
+                handle_cmd(&cmd);
             }
             Err(err) => eprintln!("Failed handling client request: [err={}]", err),
         };
     }
 }
 
-fn handle_cmd(cmd: &String) {
-    println!("Client said: {}", cmd);
-    // Command::Move(action) => {
-    // move_container_to_workspace(&mut sway_conn, &action.name);
-    // }
-    // Command::Focus(action) => {
-    // focus_to_workspace(&mut sway_conn, &action.name);
-    // }
-    // Command::FocusAllOutputs(action) => {
-    // focus_all_outputs_to_workspace(&mut sway_conn, &action.name);
-    // }
-    // Command::NextOutput => {
-    // move_container_to_next_output(&mut sway_conn);
-    // }
-    // Command::PrevOutput => {
-    // move_container_to_prev_output(&mut sway_conn);
-    // }
+fn handle_cmd(cmd: &Command) {
+    match cmd {
+        Command::Init => {
+            eprintln!("Shouldn't have received init command. Ignoring.");
+        }
+        Command::Move(action) => {
+            println!("{}", action.name);
+        }
+        Command::Focus(action) => {
+            println!("{}", action.name);
+        }
+        Command::FocusAllOutputs(action) => {
+            println!("{}", action.name);
+        }
+        Command::NextOutput => {
+            println!("next");
+        }
+        Command::PrevOutput => {
+            println!("prev");
+        }
+    }
 }
 
-fn send_cmd(cmd: &str) {
+fn send_cmd(cmd: &Command) {
     let socket = Path::new(SOCKET_PATH);
     if !socket.exists() {
         panic!("Socket doesn't exist. Run init command first.");
     }
 
-    let mut stream = match UnixStream::connect(&socket) {
+    let stream = match UnixStream::connect(&socket) {
         Ok(stream) => stream,
         Err(_) => panic!("Failed to bind socket."),
     };
 
-    stream.write_fmt(format_args!("{}", cmd)).unwrap();
+    serde_json::to_writer(stream, cmd).unwrap();
 }
 
 fn main() {
@@ -290,20 +293,8 @@ fn main() {
         Command::Init => {
             init();
         }
-        Command::Move(action) => {
-            send_cmd(&format!("move {}", action.name));
-        }
-        Command::Focus(action) => {
-            send_cmd(&format!("focus {}", action.name));
-        }
-        Command::FocusAllOutputs(action) => {
-            send_cmd(&format!("focus_all {}", action.name));
-        }
-        Command::NextOutput => {
-            send_cmd("next");
-        }
-        Command::PrevOutput => {
-            send_cmd("prev");
+        _ => {
+            send_cmd(&cli.command);
         }
     }
 }
