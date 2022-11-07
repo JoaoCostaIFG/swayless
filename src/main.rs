@@ -6,6 +6,7 @@ use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use swayipc::{Connection, Output, Workspace};
 
+use std::borrow::Borrow;
 use std::fs;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -118,7 +119,7 @@ fn get_current_output_name(connection: &mut Connection) -> String {
     focused_output_index.to_string()
 }
 
-fn get_container_name(workspace_name: &String, output_index: usize) -> String {
+fn get_container_name(workspace_name: &str, output_index: usize) -> String {
     if output_index == 0 {
         format!("{}", workspace_name)
     } else {
@@ -204,8 +205,70 @@ fn move_container_to_prev_output(connection: &mut Connection) {
     move_container_to_next_or_prev_output(connection, true);
 }
 
+fn move_workspace_containers_to_here(
+    connection: &mut Connection,
+    from_workspace_id: &str,
+) {
+    let current_output_name = get_current_output_name(connection);
+
+    let tree = connection.get_tree().unwrap();
+    let current_output_node = match tree
+        .nodes
+        .into_iter()
+        .find(|node| match node.name.borrow() {
+            Some(name) => *name == current_output_name,
+            None => false,
+        }) {
+        Some(node) => node,
+        None => {
+            eprintln!(
+                "Failed to find the output in the tree: [output_name={}]",
+                current_output_name
+            );
+            return;
+        }
+    };
+
+    let workspaces = get_workspaces(connection);
+    let to_workspace = workspaces
+        .into_iter()
+        .find(|x| x.output == current_output_name && x.visible)
+        .unwrap();
+    let to_workspace_name = to_workspace.name;
+
+    let from_workspace_name = get_container_name(from_workspace_id, 0);
+
+    let from_workspace = match current_output_node.nodes.into_iter().find(|workspace| {
+        match workspace.name.borrow() {
+            Some(name) => *name == from_workspace_name,
+            None => false,
+        }
+    }) {
+        Some(workspace) => workspace,
+        None => {
+            eprintln!(
+                "From workspace doesn't exist: [workspace_name={}]",
+                from_workspace_name
+            );
+            return;
+        }
+    };
+
+    for container in from_workspace.nodes {
+        run_command(
+            connection,
+            &format!(
+                "[ con_id={} ] move container to workspace {}",
+                container.id, to_workspace_name
+            ),
+        );
+    }
+}
+
 fn init() {
     let mut sway_conn = get_sway_conn();
+
+    move_workspace_containers_to_here(&mut sway_conn, "2");
 
     let outputs = get_outputs(&mut sway_conn);
 
