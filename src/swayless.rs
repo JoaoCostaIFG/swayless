@@ -109,17 +109,8 @@ impl Swayless {
 
     pub fn move_workspace_containers_to_here(&mut self, from_workspace_id: &str) {
         let from_workspace_name = self.get_container_name(from_workspace_id, 0);
-        {
-            let tags = self.tags.remove(&from_workspace_name).unwrap_or_default();
-            if !tags.is_empty() {
-                for id in tags.iter() {
-                    self.run_command(&format!(
-                        "[ con_id={} ] move container to workspace {}",
-                        id, from_workspace_name
-                    ))
-                }
-                return;
-            }
+        if self.return_containers(&from_workspace_name) {
+            return
         }
 
         let current_output_name = self.get_current_output_name();
@@ -189,9 +180,23 @@ impl Swayless {
 
         for res in results {
             if res.is_err() {
-                panic!("Failed running command: [command={}]", command)
+                eprintln!("Failed running command: [command={}]", command);
             }
         }
+    }
+
+    fn return_containers(&mut self, workspace_name: &str) -> bool {
+        let tags = self.tags.remove(workspace_name).unwrap_or_default();
+        if !tags.is_empty() {
+            for id in tags.iter() {
+                self.run_command(&format!(
+                    "[ con_id={} ] move container to workspace {}",
+                    id, workspace_name
+                ))
+            }
+            return true;
+        }
+        return false;
     }
 
     fn get_outputs(&mut self) -> Vec<Output> {
