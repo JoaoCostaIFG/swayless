@@ -1,9 +1,11 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 
 use swayipc::{Connection, Output, Workspace};
 
 pub struct Swayless {
     sway_conn: Connection,
+    tags: HashMap<String, Vec<i64>>,
 }
 
 impl Swayless {
@@ -17,6 +19,7 @@ impl Swayless {
 
         let mut selff = Self {
             sway_conn: connection,
+            tags: HashMap::new(),
         };
         selff.init_outputs(initial_workspace);
 
@@ -66,6 +69,36 @@ impl Swayless {
         self.run_command(&cmd);
     }
 
+    fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
+        let outputs = self.get_outputs();
+        let focused_output_index = match outputs.iter().position(|x| x.focused) {
+            Some(i) => i,
+            None => panic!("WTF! No focused output???"),
+        };
+
+        let target_output = if go_to_prev {
+            &outputs[(focused_output_index + outputs.len() - 1) % outputs.len()]
+        } else {
+            &outputs[(focused_output_index + 1) % outputs.len()]
+        };
+
+        let workspaces = self.get_workspaces();
+        let target_workspace = workspaces
+            .iter()
+            .find(|x| x.output == target_output.name && x.visible)
+            .unwrap();
+
+        // Move container to target workspace
+        let mut cmd: String = "move container to workspace ".to_string();
+        cmd.push_str(&target_workspace.num.to_string());
+        self.run_command(&cmd);
+
+        // Focus that workspace to follow the container
+        let mut cmd: String = "workspace ".to_string();
+        cmd.push_str(&target_workspace.num.to_string());
+        self.run_command(&cmd);
+    }
+
     pub fn move_container_to_next_output(&mut self) {
         self.move_container_to_next_or_prev_output(false);
     }
@@ -75,6 +108,20 @@ impl Swayless {
     }
 
     pub fn move_workspace_containers_to_here(&mut self, from_workspace_id: &str) {
+        let from_workspace_name = self.get_container_name(from_workspace_id, 0);
+        {
+            let tags = self.tags.remove(&from_workspace_name).unwrap_or_default();
+            if !tags.is_empty() {
+                for id in tags.iter() {
+                    self.run_command(&format!(
+                        "[ con_id={} ] move container to workspace {}",
+                        id, from_workspace_name
+                    ))
+                }
+                return;
+            }
+        }
+
         let current_output_name = self.get_current_output_name();
 
         let tree = self.sway_conn.get_tree().unwrap();
@@ -102,32 +149,31 @@ impl Swayless {
             .find(|x| x.output == current_output_name && x.visible)
             .unwrap();
 
-        let from_workspace_name = self.get_container_name(from_workspace_id, 0);
+        let from_workspace = match current_output_node.nodes.into_iter().find(|workspace| {
+            match workspace.name.borrow() {
+                Some(name) => *name == from_workspace_name,
+                None => false,
+            }
+        }) {
+            Some(workspace) => workspace,
+            None => {
+                eprintln!(
+                    "From workspace doesn't exist: [workspace_name={}]",
+                    from_workspace_name
+                );
+                return;
+            }
+        };
 
-        let from_workspace =
-            match current_output_node
-                .nodes
-                .into_iter()
-                .find(|workspace| match workspace.name.borrow() {
-                    Some(name) => *name == from_workspace_name,
-                    None => false,
-                }) {
-                Some(workspace) => workspace,
-                None => {
-                    eprintln!(
-                        "From workspace doesn't exist: [workspace_name={}]",
-                        from_workspace_name
-                    );
-                    return;
-                }
-            };
-
-        for container in from_workspace.nodes {
+        let mut tags = self.tags.remove(&from_workspace_name).unwrap_or_default();
+        for container in from_workspace.nodes.iter() {
             self.run_command(&format!(
                 "[ con_id={} ] move container to workspace {}",
                 container.id, to_workspace.name
             ));
+            tags.push(container.id);
         }
+        self.tags.insert(from_workspace_name, tags);
     }
 
     pub fn run_command(&mut self, command: &str) {
@@ -200,35 +246,5 @@ impl Swayless {
 
             format!("{}{}", &workspace_name, output_index_superscript)
         }
-    }
-
-    fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
-        let outputs = self.get_outputs();
-        let focused_output_index = match outputs.iter().position(|x| x.focused) {
-            Some(i) => i,
-            None => panic!("WTF! No focused output???"),
-        };
-
-        let target_output = if go_to_prev {
-            &outputs[(focused_output_index + outputs.len() - 1) % outputs.len()]
-        } else {
-            &outputs[(focused_output_index + 1) % outputs.len()]
-        };
-
-        let workspaces = self.get_workspaces();
-        let target_workspace = workspaces
-            .iter()
-            .find(|x| x.output == target_output.name && x.visible)
-            .unwrap();
-
-        // Move container to target workspace
-        let mut cmd: String = "move container to workspace ".to_string();
-        cmd.push_str(&target_workspace.num.to_string());
-        self.run_command(&cmd);
-
-        // Focus that workspace to follow the container
-        let mut cmd: String = "workspace ".to_string();
-        cmd.push_str(&target_workspace.num.to_string());
-        self.run_command(&cmd);
     }
 }
