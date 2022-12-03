@@ -88,4 +88,14 @@ impl SwaylessOutput {
         }
         self.borrowed_tags.clear();
     }
+
+    pub fn alt_tab(&mut self) {
+        self.return_all_containers();
+
+        unsafe { run_command(&format!("workspace {}", self.prev_tag)); }
+
+        let prev_tag = self.prev_tag.clone();
+        self.prev_tag = self.focused_tag.clone();
+        self.focused_tag = prev_tag;
+    }
 }

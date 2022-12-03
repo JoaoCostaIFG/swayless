@@ -1,9 +1,7 @@
-use std::borrow::Borrow;
 use std::collections::{HashMap};
-use swayipc::Output;
 
 use crate::swayless_output::SwaylessOutput;
-use crate::swayless_connection::{get_containers, get_current_container, get_current_output, get_current_workspace, get_outputs, get_visible_workspace, get_workspaces, run_command, SWAY_CONN};
+use crate::swayless_connection::{get_containers, get_current_container, get_current_output, get_outputs, get_visible_workspace, run_command};
 
 pub struct Swayless {
     /// The swayless outputs
@@ -64,6 +62,7 @@ impl Swayless {
         }
     }
 
+    /// Move a container to next/previous output. It wraps around
     unsafe fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
         let outputs = get_outputs();
         let focused_output_index = match outputs.iter().position(|x| x.focused) {
@@ -92,6 +91,7 @@ impl Swayless {
         unsafe { self.move_container_to_next_or_prev_output(true); }
     }
 
+    /// Move containers on a given tag to the current tag. They are borrowed
     pub fn move_workspace_containers_to_here(&mut self, from_tag: &str) {
         let (current_output_idx, current_output) = unsafe { get_current_output() };
         let from_workspace_name = self.get_workspace_name(from_tag, current_output_idx);
@@ -109,6 +109,12 @@ impl Swayless {
             }
             sway_output.borrow_tag_container(&from_workspace_name, *container);
         }
+    }
+
+    pub fn alt_tab_tag(&mut self) {
+        let (_, current_output) = unsafe { get_current_output() };
+        let sway_output =  self.sway_outputs.get_mut(&current_output.name).unwrap();
+        sway_output.alt_tab();
     }
 
     fn get_workspace_name(&self, workspace_name: &str, output_index: usize) -> String {

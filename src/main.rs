@@ -43,6 +43,9 @@ enum Command {
 
     #[clap(about = "Move all containers in workspace to current workspace")]
     MoveWorkspaceHere(MoveHereAction),
+
+    #[clap(about = "Go to the previous tag on the current container")]
+    AltTab,
 }
 
 #[derive(Args, Debug, Serialize, Deserialize)]
@@ -111,6 +114,9 @@ fn handle_cmd(swayless: &mut Swayless, cmd: &Command) {
         }
         Command::MoveWorkspaceHere(action) => {
             swayless.move_workspace_containers_to_here(&action.name);
+        }
+        Command::AltTab => {
+            swayless.alt_tab_tag();
         }
     }
 }
