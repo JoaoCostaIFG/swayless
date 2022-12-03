@@ -4,6 +4,7 @@ use crate::swayless_connection::run_command;
 
 pub struct SwaylessOutput {
     pub name: String,
+    pub prev_tag: String,
     pub focused_tag: String,
     pub borrowed_tags: HashMap<String, HashSet<i64>>,
 }
@@ -12,9 +13,19 @@ impl SwaylessOutput {
     pub fn new(name: &str, initial_tag: &str) -> Self {
         return Self {
             name: name.to_string(),
+            prev_tag: initial_tag.to_string(),
             focused_tag: initial_tag.to_string(),
             borrowed_tags: HashMap::new(),
         };
+    }
+
+    pub fn change_focused_tag(&mut self, new_tag: &str) {
+        self.prev_tag = self.focused_tag.to_string();
+        self.focused_tag = new_tag.to_string();
+    }
+
+    pub fn is_borrowing_tag(&self, tag: &str) -> bool {
+        self.borrowed_tags.contains_key(tag)
     }
 
     pub fn borrow_tag_container(&mut self, tag: &str, container: i64) -> bool {
@@ -56,7 +67,7 @@ impl SwaylessOutput {
                         ))
                     }
                 }
-                containers.clear();
+                self.borrowed_tags.remove(borrowed_tag);
                 return true;
             }
         };
@@ -74,7 +85,7 @@ impl SwaylessOutput {
                     }
                 }
             }
-            containers.clear();
         }
+        self.borrowed_tags.clear();
     }
 }
