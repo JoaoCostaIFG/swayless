@@ -87,24 +87,6 @@ impl Swayless {
         run_command(&mut self.sway_conn, &cmd);
     }
 
-    pub fn focus_all_outputs_to_workspace(&mut self, workspace_name: &str) {
-        let current_output = get_current_output(&mut self.sway_conn).1;
-
-        // Iterate on all outputs to focus on the given workspace
-        for output in get_outputs(&mut self.sway_conn).iter() {
-            let mut cmd: String = "focus output ".to_string();
-            cmd.push_str(output.name.as_str());
-            run_command(&mut self.sway_conn, &cmd);
-
-            self.focus_to_workspace(workspace_name);
-        }
-
-        // Get back to currently focused output
-        let mut cmd: String = "focus output ".to_string();
-        cmd.push_str(&current_output.name);
-        run_command(&mut self.sway_conn, &cmd);
-    }
-
     fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
         let outputs = get_outputs(&mut self.sway_conn);
         let focused_output_index = match outputs.iter().position(|x| x.focused) {
@@ -125,14 +107,9 @@ impl Swayless {
             .unwrap();
 
         // Move container to target workspace
-        let mut cmd: String = "move container to workspace ".to_string();
-        cmd.push_str(&target_workspace.num.to_string());
-        run_command(&mut self.sway_conn, &cmd);
-
+        run_command(&mut self.sway_conn, format!("move container to workspace {}", target_workspace.name).as_str());
         // Focus that workspace to follow the container
-        let mut cmd: String = "workspace ".to_string();
-        cmd.push_str(&target_workspace.num.to_string());
-        run_command(&mut self.sway_conn, &cmd);
+        run_command(&mut self.sway_conn, format!("workspace {}", target_workspace.name).as_str());
     }
 
     pub fn move_container_to_next_output(&mut self) {
