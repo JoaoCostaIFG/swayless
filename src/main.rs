@@ -11,6 +11,8 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 
 mod swayless;
+mod swayless_output;
+mod swayless_connection;
 
 static SOCKET_PATH: &str = "/tmp/swayless.sock";
 

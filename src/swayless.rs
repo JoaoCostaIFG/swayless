@@ -1,94 +1,59 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap};
 
-use swayipc::{Connection, Output, Workspace};
-
-fn run_command(sway_conn: &mut Connection, command: &str) {
-    eprintln!("Running command: [cmd={}]", &command);
-
-    let results = match sway_conn.run_command(&command) {
-        Ok(results) => results,
-        Err(err) => panic!(
-            "Failed running command: [command={}], [error={}]",
-            command, err
-        ),
-    };
-
-    for res in results {
-        if res.is_err() {
-            eprintln!("Failed running command: [command={}]", command);
-        }
-    }
-}
-
-fn get_outputs(sway_conn: &mut Connection) -> Vec<Output> {
-    let outputs = match sway_conn.get_outputs() {
-        Ok(outputs) => outputs,
-        Err(err) => panic!("Failed getting outputs: [error={}]", err),
-    };
-    outputs
-}
-
-fn get_current_output(sway_conn: &mut Connection) -> (usize, Output) {
-    let mut outputs = get_outputs(sway_conn);
-
-    let focused_output_index = match outputs.iter().position(|x| x.focused) {
-        Some(i) => i,
-        None => panic!("WTF! No focused output???"),
-    };
-
-    (focused_output_index, outputs.remove(focused_output_index))
-}
+use crate::swayless_output::SwaylessOutput;
+use crate::swayless_connection::{get_current_output, get_outputs, get_workspaces, run_command, SWAY_CONN};
 
 pub struct Swayless {
-    sway_conn: Connection,
-    tags: HashMap<String, Vec<i64>>,
+    /// The swayless outputs
+    sway_outputs: HashMap<String, SwaylessOutput>,
 }
 
 impl Swayless {
     pub fn new(initial_workspace: &str) -> Self {
-        let connection = match Connection::new() {
-            Ok(connection) => connection,
-            Err(_e) => {
-                panic!("couldn't find i3/sway socket");
-            }
-        };
-
         let mut selff = Self {
-            sway_conn: connection,
-            tags: HashMap::new(),
+            sway_outputs: HashMap::new(),
         };
-        selff.init_outputs(initial_workspace);
-
+        unsafe { selff.init_outputs(initial_workspace); }
         return selff;
     }
 
-    fn init_outputs(&mut self, initial_workspace: &str) {
-        let outputs = get_outputs(&mut self.sway_conn);
-        for output in outputs.iter().filter(|x| x.active).rev() {
-            run_command(&mut self.sway_conn, &format!("focus output {}", output.name));
+    /// Make each output focus its initial workspace
+    unsafe fn init_outputs(&mut self, initial_workspace: &str) {
+        for output in get_outputs().iter().filter(|x| x.active).rev() {
+            run_command(&format!("focus output {}", output.name));
+            self.sway_outputs.insert(
+                output.name.clone(),
+                SwaylessOutput::new(&output.name, initial_workspace),
+            );
             self.focus_to_workspace(initial_workspace);
         }
     }
 
-    pub fn move_container_to_workspace(&mut self, workspace_name: &String) {
-        let mut cmd: String = "move container to workspace ".to_string();
-        let current_output_index = get_current_output(&mut self.sway_conn).0;
-        let full_ws_name = self.get_workspace_name(workspace_name, current_output_index);
-        cmd.push_str(&full_ws_name);
-        run_command(&mut self.sway_conn, &cmd);
+    /// Change focus to the given tag in the current output
+    pub fn focus_to_workspace(&mut self, tag: &str) {
+        let (current_output_idx, current_output) = unsafe { get_current_output() };
+        let workspace_name = self.get_workspace_name(tag, current_output_idx);
+
+        let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
+        if sway_output.focused_tag == workspace_name {
+            // the selected tag in the current output didn't change => do nothing
+            return;
+        }
+
+        sway_output.return_all_containers();
+        unsafe { run_command(&format!("workspace {}", workspace_name)); }
+        sway_output.focused_tag = workspace_name;
     }
 
-    pub fn focus_to_workspace(&mut self, workspace_name: &str) {
-        self.return_all_containers();
-
-        let current_output_index = get_current_output(&mut self.sway_conn).0;
-        let full_ws_name = self.get_workspace_name(workspace_name, current_output_index);
-        run_command(&mut self.sway_conn, format!("workspace {}", full_ws_name).as_str());
+    pub fn move_container_to_workspace(&mut self, tag: &str) {
+        let current_output_idx = unsafe { get_current_output() }.0;
+        let workspace_name = self.get_workspace_name(tag, current_output_idx);
+        unsafe { run_command(&format!("move container to workspace {}", workspace_name)); }
     }
 
-    fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
-        let outputs = get_outputs(&mut self.sway_conn);
+    unsafe fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
+        let outputs = get_outputs();
         let focused_output_index = match outputs.iter().position(|x| x.focused) {
             Some(i) => i,
             None => panic!("WTF! No focused output???"),
@@ -100,34 +65,35 @@ impl Swayless {
             &outputs[(focused_output_index + 1) % outputs.len()]
         };
 
-        let workspaces = self.get_workspaces();
+        let workspaces = get_workspaces();
         let target_workspace = workspaces
             .iter()
             .find(|x| x.output == target_output.name && x.visible)
             .unwrap();
 
         // Move container to target workspace
-        run_command(&mut self.sway_conn, format!("move container to workspace {}", target_workspace.name).as_str());
+        run_command(&format!("move container to workspace {}", target_workspace.name));
         // Focus that workspace to follow the container
-        run_command(&mut self.sway_conn, format!("workspace {}", target_workspace.name).as_str());
+        run_command(&format!("workspace {}", target_workspace.name));
     }
 
     pub fn move_container_to_next_output(&mut self) {
-        self.move_container_to_next_or_prev_output(false);
+        unsafe { self.move_container_to_next_or_prev_output(false); }
     }
 
     pub fn move_container_to_prev_output(&mut self) {
-        self.move_container_to_next_or_prev_output(true);
+        unsafe { self.move_container_to_next_or_prev_output(true); }
     }
 
-    pub fn move_workspace_containers_to_here(&mut self, from_workspace_id: &str) {
-        let (current_output_idx, current_output) = get_current_output(&mut self.sway_conn);
-        let from_workspace_name = self.get_workspace_name(from_workspace_id, current_output_idx);
-        if self.return_containers(&from_workspace_name) {
+    pub fn move_workspace_containers_to_here(&mut self, from_tag: &str) {
+        let (current_output_idx, current_output) = unsafe { get_current_output() };
+        let from_workspace_name = self.get_workspace_name(from_tag, current_output_idx);
+        let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
+        if sway_output.return_containers(&from_workspace_name) {
             return;
         }
 
-        let tree = self.sway_conn.get_tree().unwrap();
+        let tree = unsafe { SWAY_CONN.get_tree().unwrap() };
         let current_output_node =
             match tree
                 .nodes
@@ -146,12 +112,6 @@ impl Swayless {
                 }
             };
 
-        let workspaces = self.get_workspaces();
-        let to_workspace = workspaces
-            .iter()
-            .find(|x| x.output == current_output.name && x.visible)
-            .unwrap();
-
         let from_workspace = match current_output_node.nodes.into_iter().find(|workspace| {
             match workspace.name.borrow() {
                 Some(name) => *name == from_workspace_name,
@@ -168,51 +128,14 @@ impl Swayless {
             }
         };
 
-        let mut tags = self.tags.remove(&from_workspace_name).unwrap_or_default();
         for container in from_workspace.nodes.iter() {
-            run_command(&mut self.sway_conn, &format!(
-                "[ con_id={} ] move container to workspace {}",
-                container.id, to_workspace.name
-            ));
-            tags.push(container.id);
-        }
-        self.tags.insert(from_workspace_name, tags);
-    }
-
-    fn return_containers(&mut self, workspace_name: &str) -> bool {
-        let tags = self.tags.remove(workspace_name).unwrap_or_default();
-        if !tags.is_empty() {
-            for id in tags.iter() {
-                run_command(&mut self.sway_conn, &format!(
-                    "[ con_id={} ] move container to workspace {}",
-                    id, workspace_name
-                ))
+            unsafe {
+                run_command(&format!("[ con_id={} ] move container to workspace {}",
+                                     container.id, sway_output.focused_tag
+                ));
             }
-            return true;
+            sway_output.borrow_tag_container(&from_workspace_name, container.id);
         }
-        return false;
-    }
-
-    fn return_all_containers(&mut self) {
-        for (key, tags) in self.tags.iter_mut() {
-            if !tags.is_empty() {
-                for id in tags.iter() {
-                    run_command(&mut self.sway_conn, &format!(
-                        "[ con_id={} ] move container to workspace {}",
-                        id, key
-                    ))
-                }
-            }
-            tags.clear();
-        }
-    }
-
-    fn get_workspaces(&mut self) -> Vec<Workspace> {
-        let workspaces = match self.sway_conn.get_workspaces() {
-            Ok(workspaces) => workspaces,
-            Err(err) => panic!("Failed getting workspaces: [error={}]", err),
-        };
-        workspaces
     }
 
     fn get_workspace_name(&self, workspace_name: &str, output_index: usize) -> String {
