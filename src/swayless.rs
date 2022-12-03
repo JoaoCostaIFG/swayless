@@ -80,11 +80,11 @@ impl Swayless {
     }
 
     pub fn focus_to_workspace(&mut self, workspace_name: &str) {
-        let mut cmd: String = "workspace ".to_string();
+        self.return_all_containers();
+
         let current_output_index = get_current_output(&mut self.sway_conn).0;
         let full_ws_name = self.get_workspace_name(workspace_name, current_output_index);
-        cmd.push_str(&full_ws_name);
-        run_command(&mut self.sway_conn, &cmd);
+        run_command(&mut self.sway_conn, format!("workspace {}", full_ws_name).as_str());
     }
 
     fn move_container_to_next_or_prev_output(&mut self, go_to_prev: bool) {
@@ -194,12 +194,12 @@ impl Swayless {
     }
 
     fn return_all_containers(&mut self) {
-        for (_key, tags) in self.tags.iter_mut() {
+        for (key, tags) in self.tags.iter_mut() {
             if !tags.is_empty() {
                 for id in tags.iter() {
                     run_command(&mut self.sway_conn, &format!(
                         "[ con_id={} ] move container to workspace {}",
-                        id, "1"
+                        id, key
                     ))
                 }
             }
