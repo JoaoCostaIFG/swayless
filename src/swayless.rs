@@ -58,6 +58,7 @@ impl Swayless {
                 sway_output.borrow_tag_container(&tag, get_current_container(&current_output));
                 run_command(&format!("move container to workspace {}", sway_output.focused_tag));
             } else {
+                sway_output.unborrow_container(get_current_container(&current_output));
                 run_command(&format!("move container to workspace {}", workspace_name));
             }
         }

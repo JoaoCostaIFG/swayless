@@ -40,13 +40,13 @@ impl SwaylessOutput {
         }
     }
 
-    pub fn unborrow_tag_container(&mut self, tag: &str, borrowed_tag: i64) -> bool {
-        if self.borrowed_tags.contains_key(tag) {
-            let borrowed = self.borrowed_tags.get_mut(tag).unwrap();
-            borrowed.remove(&borrowed_tag)
-        } else {
-            return false;
+    pub fn unborrow_container(&mut self, borrowed_container: i64) -> bool {
+        for (_tag, containers) in self.borrowed_tags.iter_mut() {
+            if containers.remove(&borrowed_container) {
+                return true;
+            }
         }
+        return false;
     }
 
     pub fn return_containers(&mut self, borrowed_tag: &str) -> bool {
