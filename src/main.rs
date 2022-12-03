@@ -33,9 +33,6 @@ enum Command {
     #[clap(about = "Focus to another workspace on the same output")]
     Focus(FocusAction),
 
-    #[clap(about = "Focus to another workspace on all the outputs")]
-    FocusAllOutputs(FocusAction),
-
     #[clap(about = "Move the focused container to the next output")]
     NextOutput,
 
@@ -103,9 +100,6 @@ fn handle_cmd(swayless: &mut Swayless, cmd: &Command) {
         }
         Command::Focus(action) => {
             swayless.focus_to_workspace(&action.name);
-        }
-        Command::FocusAllOutputs(action) => {
-            swayless.focus_all_outputs_to_workspace(&action.name);
         }
         Command::NextOutput => {
             swayless.move_container_to_next_output();
