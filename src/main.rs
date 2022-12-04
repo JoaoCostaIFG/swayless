@@ -1,4 +1,3 @@
-extern crate byteorder;
 extern crate clap;
 extern crate serde_json;
 

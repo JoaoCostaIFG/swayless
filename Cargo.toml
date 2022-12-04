@@ -1,6 +1,6 @@
 [package]
 name = "swayless"
-version = "1.1.5"
+version = "1.0.0"
 authors = ["JoaoCostaIFG <joaocosta.work@posteo.net>"]
 edition = "2021"
 description = "swayless is an attempt to bring Suckless' tag system to sway"
@@ -11,7 +11,6 @@ homepage = "https://github.com/JoaoCostaIFG/swayless"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-byteorder = "1.4.3"
 clap = { version = "3.2.16", features = ["derive"] }
 serde = { version = "1.0.141", features = ["derive"] }
 serde_json = "1.0.82"
