@@ -33,7 +33,7 @@ impl Swayless {
     pub fn update_focused(&mut self, workspace_name: &str) {
         let (_, current_output) = unsafe { get_current_output() };
         let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
-        if sway_output.focused_tag != workspace_name {
+        if sway_output.focused_tag() != workspace_name {
             sway_output.change_focused_tag(workspace_name);
         }
     }
@@ -44,9 +44,7 @@ impl Swayless {
         let workspace_name = self.get_workspace_name(tag, current_output_idx);
 
         let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
-        if sway_output.focused_tag != workspace_name {
-            sway_output.change_focused_tag(&workspace_name);
-        }
+        sway_output.change_focused_tag(&workspace_name);
     }
 
     /// Move a container to another workspace
@@ -58,7 +56,7 @@ impl Swayless {
         unsafe {
             if sway_output.is_borrowing_tag(&workspace_name) {
                 sway_output.borrow_tag_container(&tag, get_current_container(&current_output));
-                run_command(&format!("move container to workspace {}", sway_output.focused_tag));
+                run_command(&format!("move container to workspace {}", sway_output.focused_tag()));
             } else {
                 sway_output.unborrow_container(get_current_container(&current_output));
                 run_command(&format!("move container to workspace {}", workspace_name));
@@ -109,7 +107,7 @@ impl Swayless {
         sway_output.borrow_tag_containers(&from_workspace_name, &containers);
         unsafe {
             run_command(&format!("[ workspace={}$ ] move to workspace {}",
-                                 from_workspace_name, sway_output.focused_tag
+                                 from_workspace_name, sway_output.focused_tag()
             ));
         }
     }
