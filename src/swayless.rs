@@ -35,11 +35,6 @@ impl Swayless {
         let workspace_name = self.get_workspace_name(tag, current_output_idx);
 
         let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
-        if sway_output.focused_tag == workspace_name {
-            // the selected tag in the current output didn't change => do nothing
-            return;
-        }
-
         sway_output.return_all_containers();
         unsafe { run_command(&format!("workspace {}", workspace_name)); }
         sway_output.change_focused_tag(&workspace_name);
@@ -101,19 +96,17 @@ impl Swayless {
         }
 
         let containers = unsafe { get_containers(&current_output, &from_workspace_name) };
-        for container in containers.iter() {
-            unsafe {
-                run_command(&format!("[ con_id={} ] move container to workspace {}",
-                                     container, sway_output.focused_tag
-                ));
-            }
-            sway_output.borrow_tag_container(&from_workspace_name, *container);
+        sway_output.borrow_tag_containers(&from_workspace_name, &containers);
+        unsafe {
+            run_command(&format!("[ workspace={} ] move container to workspace {}",
+                                 from_workspace_name, sway_output.focused_tag
+            ));
         }
     }
 
     pub fn alt_tab_tag(&mut self) {
         let (_, current_output) = unsafe { get_current_output() };
-        let sway_output =  self.sway_outputs.get_mut(&current_output.name).unwrap();
+        let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
         sway_output.alt_tab();
     }
 

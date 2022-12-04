@@ -1,5 +1,5 @@
 use clap::__macro_refs::once_cell::sync::Lazy;
-use swayipc::{Connection, Output, Workspace};
+use swayipc::{Connection, Node, Output, Workspace};
 
 pub static mut SWAY_CONN: Lazy<Connection> = Lazy::new(|| Connection::new().unwrap());
 
@@ -86,5 +86,8 @@ pub unsafe fn get_current_container(current_output: &Output) -> i64 {
     let workspace_node = current_output_node.nodes.iter()
         .find(|node| *node.name.as_ref().unwrap() == current_workspace.name).unwrap();
 
-    workspace_node.nodes.iter().find(|container| container.focused).unwrap().id
+    match workspace_node.nodes.iter().find(|container| container.focused) {
+        None => -1,
+        Some(container) => container.id,
+    }
 }
