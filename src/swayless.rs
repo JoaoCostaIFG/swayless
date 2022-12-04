@@ -35,8 +35,6 @@ impl Swayless {
         let workspace_name = self.get_workspace_name(tag, current_output_idx);
 
         let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
-        sway_output.return_all_containers();
-        unsafe { run_command(&format!("workspace {}", workspace_name)); }
         sway_output.change_focused_tag(&workspace_name);
     }
 
@@ -91,14 +89,15 @@ impl Swayless {
         let (current_output_idx, current_output) = unsafe { get_current_output() };
         let from_workspace_name = self.get_workspace_name(from_tag, current_output_idx);
         let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
-        if sway_output.return_containers(&from_workspace_name) {
+        if sway_output.is_borrowing_tag(&from_workspace_name) {
+            sway_output.return_containers(&from_workspace_name);
             return;
         }
 
         let containers = unsafe { get_containers(&current_output, &from_workspace_name) };
         sway_output.borrow_tag_containers(&from_workspace_name, &containers);
         unsafe {
-            run_command(&format!("[ workspace={} ] move container to workspace {}",
+            run_command(&format!("[ workspace={}$ ] move to workspace {}",
                                  from_workspace_name, sway_output.focused_tag
             ));
         }
@@ -112,7 +111,7 @@ impl Swayless {
 
     fn get_workspace_name(&self, workspace_name: &str, output_index: usize) -> String {
         if output_index == 0 {
-            format!("{}", workspace_name)
+            workspace_name.to_string()
         } else {
             const SUPERSCRIPT_DIGITS: [&str; 10] =
                 ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];

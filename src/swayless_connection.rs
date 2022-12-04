@@ -79,7 +79,7 @@ pub unsafe fn get_current_container(current_output: &Output) -> i64 {
     let current_output_node = tree.nodes.iter()
         .find(|node| *node.name.as_ref().unwrap() == current_output.name).unwrap();
 
-    // note: at the time of writting there is a problem with the get_tree command where all
+    // note: at the time of writing there is a problem with the get_tree command where all
     // workspace nodes report not being focused. This also happens with swaymsg on the command line.
     // The get_workspaces command works correctly
     let current_workspace = get_current_workspace();

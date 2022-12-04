@@ -58,18 +58,35 @@ impl SwaylessOutput {
     }
 
     pub fn change_focused_tag(&mut self, new_tag: &str) {
+        self.return_all_containers();
+
         self.prev_tag = self.focused_tag.to_string();
+        self.prev_borrowed_tags = self.borrowed_tags.clone();
+
         self.focused_tag = new_tag.to_string();
+        self.borrowed_tags = HashMap::new();
+
+        unsafe { run_command(&format!("workspace {}", self.focused_tag)); }
     }
 
     pub fn alt_tab(&mut self) {
         self.return_all_containers();
 
-        unsafe { run_command(&format!("workspace {}", self.prev_tag)); }
-
         let prev_tag = self.prev_tag.clone();
+        let prev_borrow = self.prev_borrowed_tags.clone();
         self.prev_tag = self.focused_tag.clone();
+        self.prev_borrowed_tags = self.borrowed_tags.clone();
         self.focused_tag = prev_tag;
+        self.borrowed_tags = prev_borrow;
+
+        unsafe { run_command(&format!("workspace {}", self.focused_tag)); }
+        for tag in self.borrowed_tags.keys() {
+            unsafe {
+                run_command(&format!("[ workspace={}$ ] move to workspace {}",
+                                     tag, self.focused_tag
+                ));
+            }
+        }
     }
 
     pub fn return_containers(&mut self, borrowed_tag: &str) -> bool {
@@ -96,19 +113,16 @@ impl SwaylessOutput {
         };
     }
 
-    pub fn return_all_containers(&mut self) {
+    fn return_all_containers(&mut self) {
         for (tag, containers) in self.borrowed_tags.iter_mut() {
-            if !containers.is_empty() {
-                for id in containers.iter() {
-                    unsafe {
-                        run_command(&format!(
-                            "[ con_id={} ] move container to workspace {}",
-                            id, tag
-                        ))
-                    }
+            if containers.is_empty() {
+                continue;
+            }
+            for id in containers.iter() {
+                unsafe {
+                    run_command(&format!("[ con_id={} ] move container to workspace {}", id, tag))
                 }
             }
         }
-        self.borrowed_tags.clear();
     }
 }
