@@ -1,5 +1,5 @@
 use clap::__macro_refs::once_cell::sync::Lazy;
-use swayipc::{Connection, Node, Output, Workspace};
+use swayipc::{Connection, Output, Workspace};
 
 pub static mut SWAY_CONN: Lazy<Connection> = Lazy::new(|| Connection::new().unwrap());
 

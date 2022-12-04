@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::swayless_connection::run_command;
+use crate::swayless_connection::{run_command};
 
 pub struct SwaylessOutput {
     pub name: String,
