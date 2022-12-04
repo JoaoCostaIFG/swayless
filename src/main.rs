@@ -9,6 +9,9 @@ use swayless::Swayless;
 use std::fs;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::thread;
+use std::sync::{Arc, Mutex, MutexGuard};
+use swayipc::{Connection, Event, EventType, WorkspaceChange};
 
 mod swayless;
 mod swayless_output;
@@ -66,10 +69,32 @@ struct MoveHereAction {
     name: String,
 }
 
-fn init() {
-    let mut swayless = Swayless::new("1");
-    // swayless.move_workspace_containers_to_here("3");
+fn handle_focus_events(swayless_mutex: Arc<Mutex<Swayless>>) {
+    let workspace_sub = Connection::new().unwrap().subscribe([EventType::Workspace]).unwrap();
+    for ev in workspace_sub {
+        let event = match ev {
+            Ok(event) => event,
+            Err(_err) => {
+                eprintln!("Failure while watching events.");
+                continue;
+            }
+        };
+        match event {
+            Event::Workspace(w) => {
+                if w.change != WorkspaceChange::Focus {
+                    continue;
+                }
+                let name = w.current.unwrap().name.unwrap();
+                println!("Detected tag focus: [tag={}]", name);
+                let mut swayless = swayless_mutex.lock().unwrap();
+                swayless.update_focused(&name);
+            }
+            _ => unreachable!(),
+        }
+    }
+}
 
+fn handle_incoming_requests(swayless_mutex: Arc<Mutex<Swayless>>) {
     let socket = Path::new(SOCKET_PATH);
     if socket.exists() {
         eprintln!("Socket exists. Destroying it...");
@@ -84,18 +109,41 @@ fn init() {
 
     // iterate over clients, blocks if no client available
     for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                // connection succeeded
-                let cmd: Command = serde_json::from_reader(stream).unwrap();
-                handle_cmd(&mut swayless, &cmd);
+        let stream = match stream {
+            Ok(stream) => stream,
+            Err(err) => {
+                eprintln!("Failed handling client request: [err={}]", err);
+                continue;
             }
-            Err(err) => eprintln!("Failed handling client request: [err={}]", err),
+        };
+        match serde_json::from_reader::<_, Command>(stream) {
+            Ok(cmd) => {
+                let mut swayless = swayless_mutex.lock().unwrap();
+                handle_cmd(&mut swayless, &cmd)
+            }
+            Err(err) => {
+                eprintln!("Failed reading request to command: [err={}]", err);
+                continue;
+            }
         };
     }
 }
 
-fn handle_cmd(swayless: &mut Swayless, cmd: &Command) {
+fn init() {
+    let swayless_mutex = Arc::new(Mutex::new(Swayless::new("1")));
+    let mut handles = vec![];
+
+    let swayless_mutex_clone = Arc::clone(&swayless_mutex);
+    handles.push(thread::spawn(move || handle_incoming_requests(swayless_mutex_clone)));
+    let swayless_mutex_clone = Arc::clone(&swayless_mutex);
+    handles.push(thread::spawn(move || handle_focus_events(swayless_mutex_clone)));
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
+
+fn handle_cmd(swayless: &mut MutexGuard<Swayless>, cmd: &Command) {
     match cmd {
         Command::Init => {
             eprintln!("Shouldn't have received init command. Ignoring.");
