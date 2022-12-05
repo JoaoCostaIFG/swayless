@@ -83,10 +83,10 @@ fn handle_focus_events(swayless_mutex: Arc<Mutex<Swayless>>) {
                 if w.change != WorkspaceChange::Focus {
                     continue;
                 }
-                let name = w.current.unwrap().name.unwrap();
-                println!("Detected tag focus: [tag={}]", name);
+                //let name = w.current.unwrap().name.unwrap();
+                //eprintln!("Detected tag focus: [tag={}]", name);
                 let mut swayless = swayless_mutex.lock().unwrap();
-                swayless.update_focused(&name);
+                swayless.update_focused();
             }
             _ => unreachable!(),
         }

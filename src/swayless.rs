@@ -30,11 +30,12 @@ impl Swayless {
     }
 
     /// Used to notify that someone changed the focused tag without using swayless
-    pub fn update_focused(&mut self, workspace_name: &str) {
+    pub fn update_focused(&mut self) {
         let (_, current_output) = unsafe { get_current_output() };
         let sway_output = self.sway_outputs.get_mut(&current_output.name).unwrap();
-        if sway_output.focused_tag() != workspace_name {
-            sway_output.change_focused_tag(workspace_name);
+        let current_workspace = current_output.current_workspace.unwrap();
+        if sway_output.focused_tag() != current_workspace {
+            sway_output.change_focused_tag(&current_workspace);
         }
     }
 
