@@ -101,3 +101,10 @@ them. It's like these programs used `swayless`.
 
 - Containers/Windows can only belong to 1 tag;
 - Tag 0 (show all tags) isn't implemented.
+
+## TODO
+
+- Use regex, so I can make fewer request when moving multiple windows (i.e.,
+  borrowing tags)
+- Fix the problems related to floating windows (there's a panic on an unwrap
+  somewhere)
